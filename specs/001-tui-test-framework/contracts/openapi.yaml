@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: Repterm Test Runner API
+  version: 0.1.0
+servers:
+  - url: http://localhost:0
+paths:
+  /runs:
+    post:
+      summary: Start a test run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunRequest'
+      responses:
+        '202':
+          description: Run accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunAccepted'
+  /runs/{runId}:
+    get:
+      summary: Get run status and summary
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatus'
+  /runs/{runId}/artifacts:
+    get:
+      summary: List artifacts for a run
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artifacts list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactList'
+components:
+  schemas:
+    RunRequest:
+      type: object
+      required: [testPaths]
+      properties:
+        testPaths:
+          type: array
+          items:
+            type: string
+        record:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            castFile:
+              type: string
+        parallel:
+          type: object
+          properties:
+            workers:
+              type: integer
+              minimum: 1
+        timeouts:
+          type: object
+          properties:
+            suiteMs:
+              type: integer
+              minimum: 1
+            testMs:
+              type: integer
+              minimum: 1
+    RunAccepted:
+      type: object
+      required: [runId]
+      properties:
+        runId:
+          type: string
+    RunStatus:
+      type: object
+      required: [runId, status]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, passed, failed]
+        totals:
+          type: object
+          properties:
+            passed:
+              type: integer
+            failed:
+              type: integer
+            skipped:
+              type: integer
+        durationMs:
+          type: integer
+          minimum: 0
+    ArtifactList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artifact'
+    Artifact:
+      type: object
+      required: [type, path]
+      properties:
+        type:
+          type: string
+          enum: [cast, log, snapshot]
+        path:
+          type: string
