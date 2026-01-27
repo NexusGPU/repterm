@@ -1,0 +1,30 @@
+# Source files
+src/
+tests/
+
+# Configuration
+tsconfig.json
+eslint.config.js
+.prettierrc
+
+# Development
+*.log
+.env*
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Specs
+specs/
+
+# Documentation
+*.md
+!README.md
+
+# Playwright reference (not part of package)
+playwright/
+simple-example.js

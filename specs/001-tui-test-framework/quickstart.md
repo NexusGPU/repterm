@@ -23,7 +23,6 @@ test('cli test!!', async ({ terminal }) => {
 
 ### Example: Run a multi-terminal test
 ```ts
-
 /**
  * Multi-window HTTP server test example
  *
@@ -79,12 +78,103 @@ SCRIPT`);
 });
 ```
 
-### Run non-recorded test from CLI
-```bash
-repterm test xxx.ts
+### Example: Organized test suites with test.describe
+
+```ts
+import { test, describe, expect } from 'repterm';
+
+describe('Authentication', () => {
+  test('should login successfully', async ({ terminal }) => {
+    await terminal.start('echo "Login successful"');
+    await expect(terminal).toContainText('Login successful');
+  });
+
+  test('should handle invalid credentials', async ({ terminal }) => {
+    await terminal.start('echo "Invalid credentials"');
+    await expect(terminal).toContainText('Invalid credentials');
+  });
+});
+
+describe('User Profile', () => {
+  test('should display user info', async ({ terminal }) => {
+    await terminal.start('echo "User: admin"');
+    await expect(terminal).toContainText('User: admin');
+  });
+});
 ```
 
-### Run recorded test from CLI
+### Example: Using test.step for better test organization
+
+```ts
+import { test, expect } from 'repterm';
+
+test('database migration', async ({ terminal }) => {
+  await test.step('Connect to database', async () => {
+    await terminal.start('psql -U postgres');
+    await terminal.waitForText('postgres=#', { timeout: 5000 });
+  });
+
+  await test.step('Run migration', async () => {
+    await terminal.start('\\i migrations/001_create_users.sql');
+    await expect(terminal).toContainText('CREATE TABLE');
+  });
+
+  await test.step('Verify schema', async () => {
+    await terminal.start('\\dt');
+    await expect(terminal).toContainText('users');
+  });
+});
+```
+
+### Example: Using hooks for setup and teardown
+
+```ts
+import { test, beforeEach, afterEach, expect } from 'repterm';
+
+beforeEach(async ({ terminal }) => {
+  // Setup before each test
+  await terminal.start('mkdir -p /tmp/test-data');
+});
+
+afterEach(async ({ terminal }) => {
+  // Cleanup after each test
+  await terminal.start('rm -rf /tmp/test-data');
+});
+
+test('should use temp directory', async ({ terminal }) => {
+  await terminal.start('ls /tmp/test-data');
+  await expect(terminal).toContainText('test-data');
+});
+```
+
+## CLI Usage
+
+### Run tests (non-recorded)
 ```bash
-repterm test --record xxx.ts
+repterm tests/example.test.ts
+```
+
+### Run tests with recording enabled
+```bash
+repterm --record tests/example.test.ts
+```
+
+### Run tests in parallel with 4 workers
+```bash
+repterm --workers 4 tests/
+```
+
+### Run tests with custom timeout
+```bash
+repterm --timeout 60000 tests/
+```
+
+### Run tests with verbose output
+```bash
+repterm --verbose tests/
+```
+
+### Show help
+```bash
+repterm --help
 ```

@@ -22,10 +22,10 @@ description: "Task list for CLI/TUI test framework"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create `package.json` with Node 20.11.0 engines, scripts, and deps for TypeScript + node-pty
-- [ ] T002 Add TypeScript ESM config in `tsconfig.json` with `src/` → `dist/` output
-- [ ] T003 [P] Create public entrypoint scaffold in `src/index.ts`
-- [ ] T004 [P] Add npm tooling configs in `eslint.config.js` and `.prettierrc`
+- [X] T001 Create `package.json` with Node 20.11.0 engines, scripts, and deps for TypeScript + node-pty
+- [X] T002 Add TypeScript ESM config in `tsconfig.json` with `src/` → `dist/` output
+- [X] T003 [P] Create public entrypoint scaffold in `src/index.ts`
+- [X] T004 [P] Add npm tooling configs in `eslint.config.js` and `.prettierrc`
 
 ---
 
@@ -35,11 +35,11 @@ description: "Task list for CLI/TUI test framework"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Define core entities (TestSuite, TestCase, Step, RunResult, Artifact) in `src/runner/models.ts`
-- [ ] T006 [P] Implement run configuration loader (timeouts, record, parallel) in `src/runner/config.ts`
-- [ ] T007 [P] Implement artifact directory manager and path helpers in `src/runner/artifacts.ts`
-- [ ] T008 Implement test file discovery and loading in `src/runner/loader.ts`
-- [ ] T009 Implement terminal session abstraction around node-pty in `src/terminal/session.ts`
+- [X] T005 Define core entities (TestSuite, TestCase, Step, RunResult, Artifact) in `src/runner/models.ts`
+- [X] T006 [P] Implement run configuration loader (timeouts, record, parallel) in `src/runner/config.ts`
+- [X] T007 [P] Implement artifact directory manager and path helpers in `src/runner/artifacts.ts`
+- [X] T008 Implement test file discovery and loading in `src/runner/loader.ts`
+- [X] T009 Implement terminal session abstraction around node-pty in `src/terminal/session.ts`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -55,25 +55,25 @@ description: "Task list for CLI/TUI test framework"
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T010 [P] [US1] Contract test for POST `/runs` in `tests/contract/runs.post.test.ts`
-- [ ] T011 [P] [US1] Contract test for GET `/runs/{runId}` in `tests/contract/runs.get.test.ts`
-- [ ] T012 [P] [US1] Contract test for GET `/runs/{runId}/artifacts` in `tests/contract/runs.artifacts.test.ts`
-- [ ] T013 [P] [US1] Integration test for CLI single test run in `tests/integration/cli-run.test.ts`
-- [ ] T014 [P] [US1] Integration test for recording mode in `tests/integration/recording-run.test.ts`
+- [X] ~~T010 [P] [US1] Contract test for POST `/runs` (REMOVED - API server not needed)~~
+- [X] ~~T011 [P] [US1] Contract test for GET `/runs/{runId}` (REMOVED - API server not needed)~~
+- [X] ~~T012 [P] [US1] Contract test for GET `/runs/{runId}/artifacts` (REMOVED - API server not needed)~~
+- [X] T013 [P] [US1] Integration test for CLI single test run in `tests/integration/cli-run.test.ts`
+- [X] T014 [P] [US1] Integration test for recording mode in `tests/integration/recording-run.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T015 [P] [US1] Implement `test()` registration and suite registry in `src/api/test.ts`
-- [ ] T016 [P] [US1] Implement `expect()` terminal matchers in `src/api/expect.ts`
-- [ ] T017 [P] [US1] Implement `Terminal` API (start/send/wait/snapshot) in `src/terminal/terminal.ts`
-- [ ] T018 [US1] Implement single-runner execution pipeline in `src/runner/runner.ts`
-- [ ] T019 [US1] Implement CLI command parsing + exit codes in `src/cli/index.ts`
-- [ ] T020 [US1] Implement reporter with failure diagnostics in `src/cli/reporter.ts`
-- [ ] T021 [US1] Implement recording mode (asciinema + tmux) in `src/recording/recorder.ts` and `src/terminal/tmux.ts`
-- [ ] T022 [US1] Implement multi-pane `terminalFactory` in `src/terminal/factory.ts`
-- [ ] T023 [US1] Export public API surface in `src/index.ts`
-- [ ] T024 [US1] Implement run status store and API handlers in `src/runner/run-api.ts`
-- [ ] T025 [US1] Add HTTP server for `/runs` endpoints in `src/cli/server.ts`
+- [X] T015 [P] [US1] Implement `test()` registration and suite registry in `src/api/test.ts`
+- [X] T016 [P] [US1] Implement `expect()` terminal matchers in `src/api/expect.ts`
+- [X] T017 [P] [US1] Implement `Terminal` API (start/send/wait/snapshot) in `src/terminal/terminal.ts`
+- [X] T018 [US1] Implement single-runner execution pipeline in `src/runner/runner.ts`
+- [X] T019 [US1] Implement CLI command parsing + exit codes in `src/cli/index.ts`
+- [X] T020 [US1] Implement reporter with failure diagnostics in `src/cli/reporter.ts`
+- [X] T021 [US1] Implement recording mode (asciinema + tmux) in `src/recording/recorder.ts` and `src/terminal/tmux.ts`
+- [X] T022 [US1] Implement multi-pane `terminalFactory` in `src/terminal/factory.ts`
+- [X] T023 [US1] Export public API surface in `src/index.ts`
+- [X] ~~T024 [US1] Implement run status store and API handlers (REMOVED - API server not needed)~~
+- [X] ~~T025 [US1] Add HTTP server for `/runs` endpoints (REMOVED - API server not needed)~~
 
 **Checkpoint**: User Story 1 should be fully functional and testable independently
 
@@ -89,15 +89,15 @@ description: "Task list for CLI/TUI test framework"
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T026 [P] [US2] Integration test for parallel worker run in `tests/integration/parallel-run.test.ts`
-- [ ] T027 [P] [US2] Unit test for scheduler aggregation in `tests/unit/scheduler.test.ts`
+- [X] T026 [P] [US2] Integration test for parallel worker run in `tests/integration/parallel-run.test.ts`
+- [X] T027 [P] [US2] Unit test for scheduler aggregation in `tests/unit/scheduler.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T028 [P] [US2] Implement worker process runner in `src/runner/worker.ts`
-- [ ] T029 [US2] Implement scheduler + aggregation in `src/runner/scheduler.ts`
-- [ ] T030 [US2] Add CLI `--workers` flag and config wiring in `src/cli/index.ts`
-- [ ] T031 [US2] Ensure per-worker artifact isolation in `src/runner/artifacts.ts`
+- [X] T028 [P] [US2] Implement worker process runner in `src/runner/worker.ts`
+- [X] T029 [US2] Implement scheduler + aggregation in `src/runner/scheduler.ts`
+- [X] T030 [US2] Add CLI `--workers` flag and config wiring in `src/cli/index.ts`
+- [X] T031 [US2] Ensure per-worker artifact isolation in `src/runner/artifacts.ts`
 
 **Checkpoint**: User Stories 1 and 2 should both work independently
 
@@ -113,16 +113,16 @@ description: "Task list for CLI/TUI test framework"
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T032 [P] [US3] Unit test for suite grouping and steps in `tests/unit/describe-steps.test.ts`
-- [ ] T033 [P] [US3] Integration test for shared fixtures and suite filtering in `tests/integration/fixtures-suites.test.ts`
+- [X] T032 [P] [US3] Unit test for suite grouping and steps in `tests/unit/describe-steps.test.ts`
+- [X] T033 [P] [US3] Integration test for shared fixtures and suite filtering in `tests/integration/fixtures-suites.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T034 [P] [US3] Implement `test.describe` suite grouping in `src/api/describe.ts`
-- [ ] T035 [P] [US3] Implement `test.step` with step reporting in `src/api/steps.ts`
-- [ ] T036 [P] [US3] Implement hooks/fixtures (`beforeEach`, `afterEach`) in `src/api/hooks.ts`
-- [ ] T037 [US3] Add suite filtering by name/pattern in `src/runner/loader.ts`
-- [ ] T038 [US3] Bind shared fixtures into execution context in `src/runner/runner.ts`
+- [X] T034 [P] [US3] Implement `test.describe` suite grouping in `src/api/describe.ts`
+- [X] T035 [P] [US3] Implement `test.step` with step reporting in `src/api/steps.ts`
+- [X] T036 [P] [US3] Implement hooks/fixtures (`beforeEach`, `afterEach`) in `src/api/hooks.ts`
+- [X] T037 [US3] Add suite filtering by name/pattern in `src/runner/loader.ts`
+- [X] T038 [US3] Bind shared fixtures into execution context in `src/runner/runner.ts`
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -132,9 +132,9 @@ description: "Task list for CLI/TUI test framework"
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T039 [P] Add CLI help text and dependency checks in `src/cli/index.ts`
-- [ ] T040 [P] Add timing utilities for performance tracking in `src/utils/timing.ts`
-- [ ] T041 [P] Update `specs/001-tui-test-framework/quickstart.md` with validated examples
+- [X] T039 [P] Add CLI help text and dependency checks in `src/cli/index.ts`
+- [X] T040 [P] Add timing utilities for performance tracking in `src/utils/timing.ts`
+- [X] T041 [P] Update `specs/001-tui-test-framework/quickstart.md` with validated examples
 
 ---
 
