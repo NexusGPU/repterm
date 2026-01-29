@@ -22,7 +22,7 @@ describe('CLI Integration', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('simple pass', async ({ terminal }) => {
           await terminal.start('echo "hello"');
@@ -33,7 +33,7 @@ describe('CLI Integration', () => {
       );
 
       // Run the test via CLI (use bun instead of node for bun-pty compatibility)
-      const { stdout } = await execAsync(`bun ./dist/cli/index.js ${testFile}`);
+      const { stdout } = await execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`);
 
       // Check output
       expect(stdout.includes('pass') || stdout.includes('✓')).toBe(true);
@@ -53,7 +53,7 @@ describe('CLI Integration', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('simple fail', async ({ terminal }) => {
           await terminal.start('echo "hello"');
@@ -63,7 +63,7 @@ describe('CLI Integration', () => {
       );
 
       // Run the test via CLI (should exit with non-zero, use bun for bun-pty compatibility)
-      await expect(execAsync(`bun ./dist/cli/index.js ${testFile}`)).rejects.toThrow();
+      await expect(execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`)).rejects.toThrow();
     } finally {
       // Cleanup
       await rm(tempDir, { recursive: true, force: true });
@@ -80,7 +80,7 @@ describe('CLI Integration', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('timeout test', async ({ terminal }) => {
           await terminal.start('sleep 100');
@@ -90,7 +90,7 @@ describe('CLI Integration', () => {
       );
 
       // Run the test with short timeout - should fail (use bun for bun-pty compatibility)
-      await expect(execAsync(`bun ./dist/cli/index.js ${testFile}`)).rejects.toThrow();
+      await expect(execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`)).rejects.toThrow();
     } finally {
       // Cleanup
       await rm(tempDir, { recursive: true, force: true });

@@ -24,7 +24,7 @@ describe('Parallel Execution', () => {
         await writeFile(
           testFile,
           `
-          import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+          import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
           test('parallel test ${i}', async ({ terminal }) => {
             await terminal.start('sleep 0.5 && echo "test${i}"');
@@ -37,7 +37,7 @@ describe('Parallel Execution', () => {
 
       // Run with 4 workers
       const start = Date.now();
-      await execAsync(`bun ./dist/cli/index.js --workers 4 ${tempDir}/*.test.ts`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js --workers 4 ${tempDir}/*.test.ts`);
       const duration = Date.now() - start;
 
       // With 4 workers, should complete in ~0.5s (parallel) rather than ~2s (sequential)
@@ -61,7 +61,7 @@ describe('Parallel Execution', () => {
         await writeFile(
           testFile,
           `
-          import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+          import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
           test('isolated test ${i}', async ({ terminal }) => {
             await terminal.start('echo "worker${i}" > /tmp/repterm-test-${i}.txt');
@@ -74,7 +74,7 @@ describe('Parallel Execution', () => {
       }
 
       // Run with 3 workers
-      await execAsync(`bun ./dist/cli/index.js --workers 3 ${tempDir}/*.test.ts`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js --workers 3 ${tempDir}/*.test.ts`);
 
       // All tests should pass (no interference)
       expect(true).toBe(true);
@@ -93,7 +93,7 @@ describe('Parallel Execution', () => {
       await writeFile(
         join(tempDir, 'pass1.test.ts'),
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
         test('pass 1', async ({ terminal }) => {
           await terminal.start('echo "pass"');
           await expect(terminal).toContainText('pass');
@@ -104,7 +104,7 @@ describe('Parallel Execution', () => {
       await writeFile(
         join(tempDir, 'pass2.test.ts'),
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
         test('pass 2', async ({ terminal }) => {
           await terminal.start('echo "pass"');
           await expect(terminal).toContainText('pass');
@@ -115,7 +115,7 @@ describe('Parallel Execution', () => {
       await writeFile(
         join(tempDir, 'fail1.test.ts'),
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
         test('fail 1', async ({ terminal }) => {
           await terminal.start('echo "hello"');
           await expect(terminal).toContainText('goodbye');
@@ -125,7 +125,7 @@ describe('Parallel Execution', () => {
 
       // Run with 2 workers - should fail due to failing test
       await expect(
-        execAsync(`bun ./dist/cli/index.js --workers 2 ${tempDir}/*.test.ts`)
+        execAsync(`bun ./packages/repterm/dist/cli/index.js --workers 2 ${tempDir}/*.test.ts`)
       ).rejects.toThrow();
     } finally {
       // Cleanup

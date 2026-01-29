@@ -4,15 +4,46 @@
   "workspaces": {
     "": {
       "name": "repterm",
-      "dependencies": {
-        "bun-pty": "^0.4.4",
-      },
       "devDependencies": {
         "@types/bun": "latest",
         "@typescript-eslint/eslint-plugin": "^8.54.0",
         "@typescript-eslint/parser": "^8.54.0",
         "eslint": "^9.39.2",
         "prettier": "^3.0.0",
+        "typescript": "^5.3.0",
+      },
+    },
+    "packages/plugin-kubectl": {
+      "name": "@repterm/plugin-kubectl",
+      "version": "0.1.0",
+      "dependencies": {
+        "repterm": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.3.0",
+      },
+    },
+    "packages/plugin-logger": {
+      "name": "@repterm/plugin-logger",
+      "version": "0.1.0",
+      "dependencies": {
+        "repterm": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.3.0",
+      },
+    },
+    "packages/repterm": {
+      "name": "repterm",
+      "version": "0.1.0",
+      "bin": {
+        "repterm": "./dist/cli/index.js",
+      },
+      "dependencies": {
+        "bun-pty": "^0.4.4",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
         "typescript": "^5.3.0",
       },
     },
@@ -43,6 +74,10 @@
     "@humanwhocodes/module-importer": ["@humanwhocodes/module-importer@1.0.1", "", {}, "sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA=="],
 
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
+
+    "@repterm/plugin-kubectl": ["@repterm/plugin-kubectl@workspace:packages/plugin-kubectl"],
+
+    "@repterm/plugin-logger": ["@repterm/plugin-logger@workspace:packages/plugin-logger"],
 
     "@types/bun": ["@types/bun@1.3.7", "", { "dependencies": { "bun-types": "1.3.7" } }, "sha512-lmNuMda+Z9b7tmhA0tohwy8ZWFSnmQm1UDWXtH5r9F7wZCfkeO3Jx7wKQ1EOiKq43yHts7ky6r8SDJQWRNupkA=="],
 
@@ -199,6 +234,8 @@
     "prettier": ["prettier@3.8.1", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-UOnG6LftzbdaHZcKoPFtOcCKztrQ57WkHDeRD9t/PTQtmT0NHSeWWepj6pS0z/N7+08BHFDQVUrfmfMRcZwbMg=="],
 
     "punycode": ["punycode@2.3.1", "", {}, "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg=="],
+
+    "repterm": ["repterm@workspace:packages/repterm"],
 
     "resolve-from": ["resolve-from@4.0.0", "", {}, "sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g=="],
 

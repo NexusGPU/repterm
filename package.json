@@ -1,37 +1,22 @@
 {
-  "name": "repterm",
-  "version": "0.1.0",
-  "description": "CLI/TUI test framework with Playwright-style API",
-  "type": "module",
-  "bin": {
-    "repterm": "./src/cli/index.ts"
-  },
-  "exports": {
-    ".": {
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
-    }
-  },
+  "private": true,
+  "name": "repterm-monorepo",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "bun --watch src/cli/index.ts",
-    "test": "bun test",
+    "build": "bun run --filter '*' build",
+    "build:repterm": "bun run --filter repterm build",
+    "build:plugins": "bun run --filter '@repterm/*' build",
+    "test": "bun test packages/repterm/tests",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
-    "lint": "eslint src/",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
-  },
-  "keywords": [
-    "testing",
-    "tui",
-    "terminal",
-    "cli",
-    "playwright"
-  ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "bun-pty": "^0.4.4"
+    "dev": "bun --watch packages/repterm/src/cli/index.ts",
+    "lint": "eslint packages/repterm/src/",
+    "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"packages/**/*.ts\" \"tests/**/*.ts\"",
+    "repterm": "bun run packages/repterm/src/cli/index.ts",
+    "example": "bun run packages/repterm/src/cli/index.ts --record packages/repterm/examples"
   },
   "devDependencies": {
     "@types/bun": "latest",

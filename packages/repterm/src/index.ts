@@ -5,7 +5,7 @@
  */
 
 // Core test registration and execution
-export { test, getTests, clearTests } from './api/test.js';
+export { test, getTests, clearTests, registry } from './api/test.js';
 export { expect } from './api/expect.js';
 
 // Test organization features
@@ -16,6 +16,21 @@ export { beforeEach, afterEach, fixture } from './api/hooks.js';
 // Re-export types for user convenience
 export type { TestContext, TerminalAPI, WaitOptions } from './runner/models.js';
 export type { TestFunction } from './runner/models.js';
+
+// Plugin system
+export {
+  definePlugin,
+  defineConfig,
+  createTestWithPlugins,
+  describeWithPlugins,
+  type PluginDefinition,
+  type AnyPlugin,
+  type PluginConfig,
+  type PluginHooks,
+  type BasePluginContext,
+  type AugmentedTestContext,
+  type PluginTestFunction,
+} from './plugin/index.js';
 
 // Attach step to test namespace for test.step() syntax
 import { test as testFn } from './api/test.js';

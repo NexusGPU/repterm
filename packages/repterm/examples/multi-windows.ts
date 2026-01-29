@@ -41,13 +41,13 @@ SCRIPT`);
   // Validate server received the POST body
   // Wait for 'received' which only appears in the response JSON, not in the command
   await clientTerminal.waitForText('received', { timeout: 5000 });
-  
+
   // Note: Due to line wrapping in narrow panes, we check for substrings
   // that are likely to be on a single line
   await expect(clientTerminal).toContainText('"POST"');
   await expect(clientTerminal).toContainText('received');
   await expect(clientTerminal).toContainText('repterm');
-  
+
   // Note: Don't manually close the client terminal - let the framework handle cleanup
   // This ensures the multi-pane view is captured in the recording
 });

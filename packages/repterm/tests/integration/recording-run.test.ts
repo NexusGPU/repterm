@@ -22,7 +22,7 @@ describe('Recording Mode', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('recorded test', async ({ terminal }) => {
           await terminal.start('echo "recording"');
@@ -33,7 +33,7 @@ describe('Recording Mode', () => {
       );
 
       // Run with recording enabled (use bun for bun-pty compatibility)
-      await execAsync(`bun ./dist/cli/index.js --record ${testFile}`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js --record ${testFile}`);
 
       // Check that a .cast file was created in artifacts/
       const artifactsDir = join(process.cwd(), 'artifacts');
@@ -56,7 +56,7 @@ describe('Recording Mode', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('multi-terminal recording', async ({ terminal }) => {
           await terminal.start('echo "terminal1"');
@@ -69,7 +69,7 @@ describe('Recording Mode', () => {
       );
 
       // Run with recording enabled (use bun for bun-pty compatibility)
-      await execAsync(`bun ./dist/cli/index.js --record ${testFile}`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js --record ${testFile}`);
 
       // Recording should complete without errors
       expect(true).toBe(true);
@@ -90,7 +90,7 @@ describe('Recording Mode', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('perf test', async ({ terminal }) => {
           await terminal.start('echo "test"');
@@ -102,12 +102,12 @@ describe('Recording Mode', () => {
 
       // Run without recording (use bun for bun-pty compatibility)
       const start1 = Date.now();
-      await execAsync(`bun ./dist/cli/index.js ${testFile}`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`);
       const duration1 = Date.now() - start1;
 
       // Run with recording (use bun for bun-pty compatibility)
       const start2 = Date.now();
-      await execAsync(`bun ./dist/cli/index.js --record ${testFile}`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js --record ${testFile}`);
       const duration2 = Date.now() - start2;
 
       // Recording mode has overhead from tmux session setup

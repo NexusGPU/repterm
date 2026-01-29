@@ -11,9 +11,8 @@ import { discoverTests, loadTestFiles } from '../runner/loader.js';
 import { runAllSuites } from '../runner/runner.js';
 import { createScheduler } from '../runner/scheduler.js';
 import { createReporter } from './reporter.js';
-import { getTests } from '../api/test.js';
 import { checkDependencies, printDependencyCheck } from '../utils/dependencies.js';
-import type { RunResult } from '../runner/models.js';
+import type { RunResult, TestSuite } from '../runner/models.js';
 
 /**
  * Main CLI entry point
@@ -111,9 +110,13 @@ async function main(): Promise<void> {
     console.log('Loading tests...');
     await loadTestFiles(testFiles);
 
-    // Get registered tests
+    // Get registered tests from the repterm package
+    // IMPORTANT: Must import from 'repterm' package (not relative path) to ensure
+    // we use the same registry instance that test files register to when they
+    // `import { test } from 'repterm'`
+    const { getTests } = await import('repterm');
     const suites = getTests();
-    const totalTests = suites.reduce((sum, suite) => sum + suite.tests.length, 0);
+    const totalTests = suites.reduce((sum: number, suite: TestSuite) => sum + suite.tests.length, 0);
     console.log(`Running ${totalTests} test(s)...`);
     console.log('');
 
@@ -139,13 +142,6 @@ async function main(): Promise<void> {
 
     // Report final summary
     reporter.onRunComplete(results);
-
-    // Show recording location if recording was enabled
-    if (config.record.enabled) {
-      const runDir = artifactManager.getRunDir();
-      console.log('');
-      console.log(`Recording saved to: ${runDir}`);
-    }
 
     // Exit with appropriate code
     const failed = results.filter((r) => r.status === 'fail').length;

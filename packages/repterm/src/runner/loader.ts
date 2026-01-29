@@ -94,7 +94,10 @@ export async function loadTestFile(filePath: string): Promise<void> {
   const fileUrl = pathToFileURL(filePath).href;
 
   // Set the current file in registry to create file-level suite
-  const { registry } = await import('../api/test.js');
+  // IMPORTANT: Must import from 'repterm' package (not relative path) to ensure
+  // we use the same registry instance that test files will use when they
+  // `import { test } from 'repterm'`
+  const { registry } = await import('repterm');
   registry.setCurrentFile(filePath);
 
   try {

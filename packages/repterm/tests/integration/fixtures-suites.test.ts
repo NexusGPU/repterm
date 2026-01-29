@@ -22,7 +22,7 @@ describe('Fixtures and Suites', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         // Note: Fixtures would be implemented via hooks
         test('test with fixture', async ({ terminal }) => {
@@ -33,7 +33,7 @@ describe('Fixtures and Suites', () => {
       );
 
       // Run the test
-      await execAsync(`bun ./dist/cli/index.js ${testFile}`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`);
 
       // Should pass - no assertion needed, if it throws the test fails
       expect(true).toBe(true);
@@ -53,7 +53,7 @@ describe('Fixtures and Suites', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         test('suite A test 1', async ({ terminal }) => {
           await terminal.start('echo "A1"');
@@ -73,7 +73,7 @@ describe('Fixtures and Suites', () => {
       );
 
       // Run all tests
-      const { stdout } = await execAsync(`bun ./dist/cli/index.js ${testFile}`);
+      const { stdout } = await execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`);
 
       // Should run all 3 tests (new Vitest-style output format)
       expect(stdout).toContain('3 passed');
@@ -93,7 +93,7 @@ describe('Fixtures and Suites', () => {
       await writeFile(
         testFile,
         `
-        import { test, expect } from '${join(process.cwd(), 'dist/index.js')}';
+        import { test, expect } from '${join(process.cwd(), 'packages/repterm/dist/index.js')}';
 
         // Note: Hooks would be implemented separately
         test('test with setup', async ({ terminal }) => {
@@ -104,7 +104,7 @@ describe('Fixtures and Suites', () => {
       );
 
       // Run the test
-      await execAsync(`bun ./dist/cli/index.js ${testFile}`);
+      await execAsync(`bun ./packages/repterm/dist/cli/index.js ${testFile}`);
 
       // Should pass
       expect(true).toBe(true);
