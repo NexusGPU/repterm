@@ -6,16 +6,17 @@
 
 // Core test registration and execution
 export { test, getTests, clearTests, registry } from './api/test.js';
-export { expect } from './api/expect.js';
+export { expect, TerminalExpect, CommandResultExpect, AssertionError } from './api/expect.js';
 
 // Test organization features
 export { describe } from './api/describe.js';
 export { step } from './api/steps.js';
-export { beforeEach, afterEach, fixture } from './api/hooks.js';
+export { beforeEach, afterEach } from './api/hooks.js';
 
 // Re-export types for user convenience
-export type { TestContext, TerminalAPI, WaitOptions } from './runner/models.js';
+export type { TestContext, TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess } from './runner/models.js';
 export type { TestFunction } from './runner/models.js';
+export type { HookFunction, EnhancedHookFunction } from './api/hooks.js';
 
 // Plugin system
 export {

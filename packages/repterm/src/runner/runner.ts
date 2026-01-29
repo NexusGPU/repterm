@@ -66,19 +66,16 @@ export async function runTest(
     recordingPath,
   });
 
-  // Build test context with fixtures
-  const context: TestContext = {
+  // Build initial test context
+  let context: TestContext = {
     terminal,
     ...testCase.fixtures,
   };
 
-  // Build and merge additional fixtures from registry
-  const additionalFixtures = hooksRegistry.buildFixtures(context);
-  Object.assign(context, additionalFixtures);
-
   try {
-    // Run beforeEach hooks
-    await hooksRegistry.runBeforeEach(context);
+    // Run beforeEach hooks and get augmented context
+    // Hook 返回的属性会被合并到 context
+    context = await hooksRegistry.runBeforeEach(context);
 
     // Set timeout
     const timeout = testCase.timeout ?? config.timeouts.testMs;
@@ -89,7 +86,7 @@ export async function runTest(
       ),
     ]);
 
-    // Run afterEach hooks
+    // Run afterEach hooks with augmented context
     await hooksRegistry.runAfterEach(context);
 
     // Test passed

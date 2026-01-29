@@ -98,7 +98,7 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                 if (ctx.debug) {
                     console.log(`[kubectl] Executing: ${cmd}`);
                 }
-                await testContext.terminal.start(`${cmd}\n`);
+                await testContext.terminal.run(`${cmd}\n`);
                 const output = await testContext.terminal.snapshot();
                 return output;
             };
@@ -114,7 +114,7 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                     while (Date.now() - startTime < timeout) {
                         try {
                             const cmd = buildCommand(`get pod ${name} -o jsonpath='{.status.phase}'`);
-                            await testContext.terminal.start(`${cmd}\n`);
+                            await testContext.terminal.run(`${cmd}\n`);
                             await testContext.terminal.waitForText(status, { timeout: checkInterval });
                             return;
                         } catch {
@@ -127,7 +127,7 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                 apply: async (yaml: string) => {
                     const escapedYaml = yaml.replace(/'/g, "'\\''");
                     const cmd = `echo '${escapedYaml}' | kubectl -n ${currentNamespace} apply -f -`;
-                    await testContext.terminal.start(`${cmd}\n`);
+                    await testContext.terminal.run(`${cmd}\n`);
                 },
 
                 delete: async (resource: string, name: string) => {
@@ -151,7 +151,7 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                 exists: async (resource: string, name: string): Promise<boolean> => {
                     try {
                         const cmd = buildCommand(`get ${resource} ${name} -o name`);
-                        await testContext.terminal.start(`${cmd}\n`);
+                        await testContext.terminal.run(`${cmd}\n`);
                         await testContext.terminal.waitForText(`${resource}/${name}`, { timeout: 5000 });
                         return true;
                     } catch {

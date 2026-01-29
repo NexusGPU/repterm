@@ -40,9 +40,19 @@ describe('repterm public API', () => {
         test('exports afterEach function', () => {
             expect(repterm.afterEach).toBeTypeOf('function');
         });
+    });
 
-        test('exports fixture function', () => {
-            expect(repterm.fixture).toBeTypeOf('function');
+    describe('expect exports', () => {
+        test('exports TerminalExpect class', () => {
+            expect(repterm.TerminalExpect).toBeTypeOf('function');
+        });
+
+        test('exports CommandResultExpect class', () => {
+            expect(repterm.CommandResultExpect).toBeTypeOf('function');
+        });
+
+        test('exports AssertionError class', () => {
+            expect(repterm.AssertionError).toBeTypeOf('function');
         });
     });
 

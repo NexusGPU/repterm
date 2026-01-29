@@ -16,7 +16,8 @@
     "format": "prettier --write \"packages/**/*.ts\" \"tests/**/*.ts\"",
     "format:check": "prettier --check \"packages/**/*.ts\" \"tests/**/*.ts\"",
     "repterm": "bun run packages/repterm/src/cli/index.ts",
-    "example": "bun run packages/repterm/src/cli/index.ts --record packages/repterm/examples"
+    "example": "bun run packages/repterm/src/cli/index.ts packages/repterm/examples",
+    "example:record": "bun run packages/repterm/src/cli/index.ts --record packages/repterm/examples"
   },
   "devDependencies": {
     "@types/bun": "latest",

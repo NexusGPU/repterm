@@ -18,6 +18,13 @@ import type { RunResult, TestSuite } from '../runner/models.js';
  * Main CLI entry point
  */
 async function main(): Promise<void> {
+  // Hidden launcher subcommand for internal use
+  if (process.argv[2] === '__launcher__') {
+    const { runLauncher } = await import('./launcher.js');
+    await runLauncher(process.argv.slice(3));
+    return;
+  }
+
   try {
     const args = parseArgs({
       args: process.argv.slice(2),
@@ -110,11 +117,9 @@ async function main(): Promise<void> {
     console.log('Loading tests...');
     await loadTestFiles(testFiles);
 
-    // Get registered tests from the repterm package
-    // IMPORTANT: Must import from 'repterm' package (not relative path) to ensure
-    // we use the same registry instance that test files register to when they
-    // `import { test } from 'repterm'`
-    const { getTests } = await import('repterm');
+    // Get registered tests from the registry
+    // Use relative import to ensure we use the same registry instance
+    const { getTests } = await import('../index.js');
     const suites = getTests();
     const totalTests = suites.reduce((sum: number, suite: TestSuite) => sum + suite.tests.length, 0);
     console.log(`Running ${totalTests} test(s)...`);

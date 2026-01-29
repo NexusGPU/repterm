@@ -160,3 +160,74 @@ export class TerminalSession extends EventEmitter {
 export function createSession(config?: SessionConfig): TerminalSession {
   return new TerminalSession(config);
 }
+
+/**
+ * 命令执行结果（内部使用）
+ */
+export interface RunCommandResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * 执行命令并返回分离的 stdout/stderr（非 PTY 模式）
+ * 用于非录制、非交互式场景
+ */
+export async function runCommand(
+  command: string,
+  options: { timeout?: number; cwd?: string } = {}
+): Promise<RunCommandResult> {
+  const timeout = options.timeout ?? 30000;
+  const cwd = options.cwd ?? process.cwd();
+
+  // 构建环境变量
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+
+  const proc = Bun.spawn(['sh', '-c', command], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd,
+    env,
+  });
+
+  // 设置超时
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      proc.kill();
+      reject(new Error(`Command timed out after ${timeout}ms: ${command}`));
+    }, timeout);
+  });
+
+  try {
+    const [stdout, stderr, exitCode] = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      timeoutPromise,
+    ]);
+
+    return {
+      code: exitCode,
+      stdout,
+      stderr,
+    };
+  } finally {
+    // 清除超时定时器
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    // 确保进程被清理
+    if (proc.exitCode === null) {
+      proc.kill();
+    }
+  }
+}

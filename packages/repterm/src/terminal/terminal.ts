@@ -2,12 +2,51 @@
  * Terminal API implementation
  * Provides high-level terminal interaction (start/send/wait/snapshot)
  * 
- * Recording mode: Following simple-example.js pattern, wraps commands in asciinema
+ * 统一执行架构：所有命令通过 PTY + launcher 执行，确保行为一致性
  */
 
-import type { TerminalAPI, WaitOptions } from '../runner/models.js';
+import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess } from '../runner/models.js';
 import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Get the CLI directory path for launcher command
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const CLI_INDEX_PATH = join(__dirname, '..', 'cli', 'index.js');
+
+/**
+ * CommandResult 实现类，提供 successful getter
+ */
+class CommandResultImpl implements CommandResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+  output: string;
+  duration: number;
+  command: string;
+
+  constructor(data: {
+    code: number;
+    stdout: string;
+    stderr: string;
+    output: string;
+    duration: number;
+    command: string;
+  }) {
+    this.code = data.code;
+    this.stdout = data.stdout;
+    this.stderr = data.stderr;
+    this.output = data.output;
+    this.duration = data.duration;
+    this.command = data.command;
+  }
+
+  get successful(): boolean {
+    return this.code === 0;
+  }
+}
 
 export interface TerminalConfig {
   cols?: number;
@@ -129,52 +168,17 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Start a command in the terminal
+   * 执行命令，返回 PTYProcess
+   * 
+   * 统一执行架构：所有命令通过 PTY + launcher 执行
+   * - 直接 await: 自动调用 wait()，返回 CommandResult
+   * - 不 await: 返回 PTYProcess 控制器，可调用 expect/send/wait 等方法
    */
-  async start(command: string): Promise<void> {
+  run(command: string, options: RunOptions = {}): PTYProcess {
     if (this.closed) {
       throw new Error('Terminal is closed');
     }
-
-    // Initialize session on first command
-    if (!this.session.isActive()) {
-      await this.initializeSession();
-    }
-
-    // In recording mode, type with human-like delay
-    if (this.recording) {
-      // Select the correct pane before executing command
-      await this.selectPane();
-
-      // Think time before typing (like simple-example.js)
-      await this.sleep(300);
-
-      // Decide whether to type character-by-character or paste
-      // Long commands (>50 chars) or multi-line commands are pasted
-      const shouldPaste = command.length > 50 || command.includes('\n');
-
-      if (shouldPaste) {
-        // Paste mode: write directly (simulates Ctrl+V paste)
-        this.session.write(command);
-        await this.sleep(100);  // Brief pause after paste
-      } else {
-        // Type mode: character-by-character with delays
-        await this.typeWithDelay(command);
-      }
-
-      this.session.write('\r');
-
-      // Wait for command to execute (give time for output)
-      await this.waitForOutputStable();
-
-      // View time after command (let viewers see the output)
-      await this.sleep(500);
-    } else {
-      // Non-recording mode: send command directly
-      this.session.write(command + '\n');
-      // Wait for command to be processed
-      await this.sleep(50);
-    }
+    return new PTYProcessImpl(this, command, options);
   }
 
   /**
@@ -205,11 +209,29 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     } else {
       // Non-recording mode: spawn shell directly
       this.session.start();
-      // Wait for shell to initialize
-      await this.sleep(100);
+      // Wait for shell to initialize and be ready
+      await this.waitForShellReady();
     }
 
     this.initialized = true;
+  }
+
+  /**
+   * Wait for shell to be ready (detect shell prompt)
+   */
+  private async waitForShellReady(timeout: number = 5000): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      const output = this.session.getOutput();
+      // 检测 shell 准备好的标志（出现命令提示符）
+      if (output.includes('$') || output.includes('#') || output.includes('%') || output.includes('>')) {
+        await this.sleep(100);  // 额外等待确保稳定
+        return;
+      }
+      await this.sleep(50);
+    }
+    // 超时不报错，继续执行
   }
 
   /**
@@ -442,6 +464,191 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Read launcher result from temp files
+   */
+  async readLauncherResult(id: string, command: string, startTime: number): Promise<CommandResult> {
+    const stdoutPath = `/tmp/repterm-${id}.stdout`;
+    const stderrPath = `/tmp/repterm-${id}.stderr`;
+    const exitPath = `/tmp/repterm-${id}.exit`;
+
+    // Read results with fallbacks
+    const [stdout, stderr, exitStr] = await Promise.all([
+      Bun.file(stdoutPath).text().catch(() => ''),
+      Bun.file(stderrPath).text().catch(() => ''),
+      Bun.file(exitPath).text().catch(() => '-1'),
+    ]);
+
+    // Cleanup temp files
+    const { unlink } = await import('fs/promises');
+    await Promise.all([
+      unlink(stdoutPath).catch(() => { }),
+      unlink(stderrPath).catch(() => { }),
+      unlink(exitPath).catch(() => { }),
+    ]);
+
+    const exitCode = parseInt(exitStr.trim(), 10);
+    return new CommandResultImpl({
+      code: Number.isNaN(exitCode) ? -1 : exitCode,
+      stdout,
+      stderr,
+      output: stdout + stderr,
+      duration: Date.now() - startTime,
+      command,
+    });
+  }
+
+  /**
+   * Execute command in PTY (internal, for PTYProcessImpl)
+   */
+  async executeInPty(command: string): Promise<void> {
+    // Initialize session on first command
+    if (!this.session.isActive()) {
+      await this.initializeSession();
+    }
+
+    // In recording mode, type with human-like delay
+    if (this.recording) {
+      await this.selectPane();
+      await this.sleep(300);
+
+      const shouldPaste = command.length > 50 || command.includes('\n');
+      if (shouldPaste) {
+        this.session.write(command);
+        await this.sleep(100);
+      } else {
+        await this.typeWithDelay(command);
+      }
+      this.session.write('\r');
+    } else {
+      this.session.write(command + '\n');
+    }
+
+    await this.sleep(50);
+  }
+}
+
+/**
+ * PTYProcess 实现类
+ * 实现 PromiseLike 接口，支持 await 和控制器两种用法
+ */
+class PTYProcessImpl implements PTYProcess {
+  private terminal: Terminal;
+  private launcherId: string;
+  private commandStarted: boolean = false;
+  private command: string;
+  private options: RunOptions;
+  private startTime: number;
+
+  constructor(terminal: Terminal, command: string, options: RunOptions = {}) {
+    this.terminal = terminal;
+    this.launcherId = crypto.randomUUID();
+    this.command = command;
+    this.options = options;
+    this.startTime = Date.now();
+  }
+
+  // ===== PromiseLike 实现 =====
+
+  /**
+   * 实现 PromiseLike.then()
+   * await proc 时自动调用此方法
+   */
+  then<TResult1 = CommandResult, TResult2 = never>(
+    onfulfilled?: ((value: CommandResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): Promise<TResult1 | TResult2> {
+    return this.wait().then(onfulfilled, onrejected);
+  }
+
+  /**
+   * 实现 catch 方法（便捷方法）
+   */
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
+  ): Promise<CommandResult | TResult> {
+    return this.wait().catch(onrejected);
+  }
+
+  /**
+   * 实现 finally 方法（便捷方法）
+   */
+  finally(onfinally?: (() => void) | null): Promise<CommandResult> {
+    return this.wait().finally(onfinally);
+  }
+
+  // ===== 交互式控制方法 =====
+
+  /**
+   * Start the command with launcher wrapper
+   */
+  private async startCommand(): Promise<void> {
+    if (this.commandStarted) return;
+    this.commandStarted = true;
+
+    // Escape single quotes in the command and wrap with single quotes
+    // This ensures shell special characters (;, |, &, etc.) are passed to launcher
+    const escapedCommand = this.command.replace(/'/g, "'\\''");
+    const launcherCmd = `bun ${CLI_INDEX_PATH} __launcher__ --id=${this.launcherId} -- '${escapedCommand}'`;
+    await this.terminal.executeInPty(launcherCmd);
+  }
+
+  /**
+   * Wait for specified text to appear
+   */
+  async expect(text: string, options?: { timeout?: number }): Promise<void> {
+    await this.startCommand();
+    await this.terminal.waitForText(text, options);
+  }
+
+  /**
+   * Send input to the process (with newline)
+   */
+  async send(input: string): Promise<void> {
+    await this.startCommand();
+    await this.terminal.send(input + '\r');
+  }
+
+  /**
+   * Send raw input to the process (without newline)
+   */
+  async sendRaw(input: string): Promise<void> {
+    await this.startCommand();
+    await this.terminal.send(input);
+  }
+
+  /**
+   * Wait for command to complete and return result
+   */
+  async wait(options?: { timeout?: number }): Promise<CommandResult> {
+    await this.startCommand();
+
+    // Wait for output to stabilize
+    const timeout = options?.timeout ?? this.options.timeout ?? 30000;
+    const waitStartTime = Date.now();
+
+    // Poll for exit file to exist
+    const exitPath = `/tmp/repterm-${this.launcherId}.exit`;
+    while (Date.now() - waitStartTime < timeout) {
+      const exitFile = Bun.file(exitPath);
+      if (await exitFile.exists()) {
+        // Give a small delay for files to be fully written
+        await new Promise(resolve => setTimeout(resolve, 100));
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    return this.terminal.readLauncherResult(this.launcherId, this.command, this.startTime);
+  }
+
+  /**
+   * Send Ctrl+C to interrupt the command
+   */
+  async interrupt(): Promise<void> {
+    await this.terminal.send('\x03');  // Ctrl+C
   }
 }
 

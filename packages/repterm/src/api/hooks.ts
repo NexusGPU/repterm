@@ -1,27 +1,35 @@
 /**
- * Hooks and fixtures (beforeEach, afterEach)
- * Provides setup and teardown functionality
+ * Hooks (beforeEach, afterEach)
+ * Provides setup and teardown functionality with context injection
  */
 
 import type { TestContext } from '../runner/models.js';
 
 /**
- * Hook function type
+ * 基础 Hook 函数类型
  */
 export type HookFunction = (context: TestContext) => Promise<void> | void;
+
+/**
+ * 增强的 Hook 函数类型，支持返回值注入
+ * 返回的对象会被合并到后续的 context 中
+ */
+export type EnhancedHookFunction = (
+  context: TestContext
+) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
 
 /**
  * Global hooks storage
  */
 class HooksRegistry {
-  private beforeEachHooks: HookFunction[] = [];
+  private beforeEachHooks: EnhancedHookFunction[] = [];
   private afterEachHooks: HookFunction[] = [];
-  private fixtureFactories: Map<string, (context: TestContext) => unknown> = new Map();
 
   /**
    * Register a beforeEach hook
+   * Hook 可以返回对象，返回的属性会被注入到后续的 context 中
    */
-  registerBeforeEach(fn: HookFunction): void {
+  registerBeforeEach(fn: EnhancedHookFunction): void {
     this.beforeEachHooks.push(fn);
   }
 
@@ -33,19 +41,21 @@ class HooksRegistry {
   }
 
   /**
-   * Register a fixture factory
+   * Run all beforeEach hooks and return augmented context
+   * 返回合并了所有 hook 返回值的增强 context
    */
-  registerFixture(name: string, factory: (context: TestContext) => unknown): void {
-    this.fixtureFactories.set(name, factory);
-  }
+  async runBeforeEach(context: TestContext): Promise<TestContext> {
+    let augmentedContext = { ...context };
 
-  /**
-   * Run all beforeEach hooks
-   */
-  async runBeforeEach(context: TestContext): Promise<void> {
     for (const hook of this.beforeEachHooks) {
-      await hook(context);
+      const result = await hook(augmentedContext);
+      if (result && typeof result === 'object') {
+        // 将返回值合并到 context
+        augmentedContext = { ...augmentedContext, ...result };
+      }
     }
+
+    return augmentedContext;
   }
 
   /**
@@ -58,25 +68,11 @@ class HooksRegistry {
   }
 
   /**
-   * Build fixtures for a test
-   */
-  buildFixtures(context: TestContext): Record<string, unknown> {
-    const fixtures: Record<string, unknown> = {};
-
-    for (const [name, factory] of this.fixtureFactories.entries()) {
-      fixtures[name] = factory(context);
-    }
-
-    return fixtures;
-  }
-
-  /**
    * Clear all hooks (for testing)
    */
   clear(): void {
     this.beforeEachHooks = [];
     this.afterEachHooks = [];
-    this.fixtureFactories.clear();
   }
 }
 
@@ -85,8 +81,26 @@ export const hooksRegistry = new HooksRegistry();
 
 /**
  * Register a beforeEach hook
+ * 
+ * Hook 可以返回对象，返回的属性会被注入到后续的 context 中（包括测试函数和 afterEach）
+ * 
+ * @example
+ * // 创建临时目录 fixture
+ * beforeEach(async () => {
+ *   const tmpDir = await fs.mkdtemp('/tmp/test-');
+ *   return { tmpDir };  // tmpDir 会被注入到 context
+ * });
+ * 
+ * afterEach(async ({ tmpDir }) => {
+ *   if (tmpDir) await fs.rm(tmpDir, { recursive: true });
+ * });
+ * 
+ * test('file operations', async ({ terminal, tmpDir }) => {
+ *   // tmpDir 自动可用
+ *   await terminal.run(`touch ${tmpDir}/test.txt`);
+ * });
  */
-export function beforeEach(fn: HookFunction): void {
+export function beforeEach(fn: EnhancedHookFunction): void {
   hooksRegistry.registerBeforeEach(fn);
 }
 
@@ -95,13 +109,6 @@ export function beforeEach(fn: HookFunction): void {
  */
 export function afterEach(fn: HookFunction): void {
   hooksRegistry.registerAfterEach(fn);
-}
-
-/**
- * Register a fixture
- */
-export function fixture<T>(name: string, factory: (context: TestContext) => T): void {
-  hooksRegistry.registerFixture(name, factory);
 }
 
 /**
