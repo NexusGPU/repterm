@@ -2,6 +2,26 @@
  * Core entities for the test framework
  */
 
+/**
+ * test() 函数的配置选项
+ */
+export interface TestOptions {
+  /** 标记为录制测试，仅在 --record 模式下运行 */
+  record?: boolean;
+  /** 测试超时时间（毫秒） */
+  timeout?: number;
+  // 未来可扩展：skip, only, retry 等
+}
+
+/**
+ * describe() 函数的配置选项
+ */
+export interface DescribeOptions {
+  /** 标记为录制测试套件，内部所有测试默认继承此配置 */
+  record?: boolean;
+  // 未来可扩展：timeout 等
+}
+
 export interface TestSuite {
   id: string;
   name: string;
@@ -9,6 +29,7 @@ export interface TestSuite {
   suites?: TestSuite[]; // Nested suites for nested describe() blocks
   parent?: TestSuite; // Parent suite for nested describe() blocks
   config: SuiteConfig;
+  options?: DescribeOptions; // describe() 的配置选项
 }
 
 export interface SuiteConfig {
@@ -32,6 +53,7 @@ export interface TestCase {
   timeout?: number;
   fixtures?: Record<string, unknown>;
   fn: TestFunction;
+  options?: TestOptions; // test() 的配置选项
 }
 
 export type TestFunction = (context: TestContext) => Promise<void>;
@@ -108,6 +130,12 @@ export interface RunOptions {
 
   /** 工作目录（可选） */
   cwd?: string;
+
+  /** 
+   * 标记为交互式命令，使用 PTY 执行
+   * 交互式模式支持 expect/send 方法，但 exitCode 不可靠
+   */
+  interactive?: boolean;
 }
 
 export interface TerminalAPI {
@@ -147,6 +175,11 @@ export interface TerminalAPI {
 
 export interface WaitOptions {
   timeout?: number;
+  /** 
+   * 是否移除 ANSI 转义序列后再匹配文本（录制模式下默认 true）
+   * 设为 false 可保留原始输出，用于测试 ANSI 相关功能
+   */
+  stripAnsi?: boolean;
 }
 
 export interface Step {

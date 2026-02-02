@@ -18,13 +18,6 @@ import type { RunResult, TestSuite } from '../runner/models.js';
  * Main CLI entry point
  */
 async function main(): Promise<void> {
-  // Hidden launcher subcommand for internal use
-  if (process.argv[2] === '__launcher__') {
-    const { runLauncher } = await import('./launcher.js');
-    await runLauncher(process.argv.slice(3));
-    return;
-  }
-
   try {
     const args = parseArgs({
       args: process.argv.slice(2),
@@ -120,9 +113,26 @@ async function main(): Promise<void> {
     // Get registered tests from the registry
     // Use relative import to ensure we use the same registry instance
     const { getTests } = await import('../index.js');
-    const suites = getTests();
-    const totalTests = suites.reduce((sum: number, suite: TestSuite) => sum + suite.tests.length, 0);
-    console.log(`Running ${totalTests} test(s)...`);
+    const allSuites = getTests();
+    
+    // Apply test filtering based on --record flag
+    const { filterSuites, countTests } = await import('../runner/filter.js');
+    const suites = filterSuites(allSuites, config.record.enabled);
+    const totalTests = countTests(suites);
+    
+    if (totalTests === 0) {
+      if (config.record.enabled) {
+        console.error('No tests marked with { record: true } found.');
+        console.error('Use describe/test with { record: true } to mark recording tests.');
+      } else {
+        console.error('No non-recording tests found.');
+        console.error('All tests are marked with { record: true }. Use --record to run them.');
+      }
+      process.exit(1);
+    }
+    
+    const modeLabel = config.record.enabled ? ' (recording mode)' : '';
+    console.log(`Running ${totalTests} test(s)${modeLabel}...`);
     console.log('');
 
     // Create reporter for streaming output
@@ -130,6 +140,7 @@ async function main(): Promise<void> {
 
     // Run tests (parallel or sequential based on worker count)
     let results;
+    const onTestStart = (testInfo: { suitePath: string[]; testName: string }) => reporter.onTestStart(testInfo);
     const onResult = (result: RunResult) => reporter.onTestResult(result);
 
     if (config.parallel.workers > 1) {
@@ -142,7 +153,7 @@ async function main(): Promise<void> {
       results = await scheduler.run(suites);
     } else {
       // Single worker - run sequentially
-      results = await runAllSuites(suites, { config, artifactManager, onResult });
+      results = await runAllSuites(suites, { config, artifactManager, onResult, onTestStart });
     }
 
     // Report final summary
@@ -171,15 +182,19 @@ Usage:
   repterm [options] <test-paths...>
 
 Options:
-  -r, --record         Enable recording mode (asciinema)
+  -r, --record         Run recording tests (tests marked with { record: true })
   -w, --workers <n>    Number of parallel workers (default: 1)
   -t, --timeout <ms>   Test timeout in milliseconds (default: 30000)
   -v, --verbose        Verbose output with stack traces
   -h, --help           Show this help message
 
+Test Modes:
+  Without --record:    Runs tests NOT marked with { record: true }
+  With --record:       Runs ONLY tests marked with { record: true }
+
 Examples:
-  repterm tests/example.test.ts
-  repterm --record tests/
+  repterm tests/                    # Run non-recording tests
+  repterm --record tests/           # Run recording tests only
   repterm --workers 4 tests/
   `);
 }

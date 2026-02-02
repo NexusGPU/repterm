@@ -2,7 +2,7 @@
  * Playwright-style test() registration and suite registry
  */
 
-import type { TestCase, TestFunction, TestSuite } from '../runner/models.js';
+import type { TestCase, TestFunction, TestSuite, TestOptions } from '../runner/models.js';
 import { randomBytes } from 'crypto';
 
 /**
@@ -35,9 +35,18 @@ class TestRegistry {
   }
 
   /**
+   * Get the current suite ID (for hooks registration)
+   */
+  getCurrentSuiteId(): string | undefined {
+    const suite = this.getCurrentSuite();
+    // Return undefined for default suite to indicate global hooks
+    return suite.id === 'default' ? undefined : suite.id;
+  }
+
+  /**
    * Register a test case
    */
-  registerTest(name: string, fn: TestFunction): void {
+  registerTest(name: string, fn: TestFunction, options?: TestOptions): void {
     const suite = this.getCurrentSuite();
 
     const testCase: TestCase = {
@@ -45,6 +54,7 @@ class TestRegistry {
       name,
       steps: [],
       fn,
+      options,
     };
 
     suite.tests.push(testCase);
@@ -170,9 +180,25 @@ export const registry = new TestRegistry();
 /**
  * Playwright-style test() function
  * Registers a test case with the current suite
+ * 
+ * @example
+ * // 普通测试
+ * test('name', async ({ terminal }) => { ... });
+ * 
+ * // 录制测试
+ * test('name', { record: true }, async ({ terminal }) => { ... });
  */
-export function test(name: string, fn: TestFunction): void {
-  registry.registerTest(name, fn);
+export function test(name: string, fn: TestFunction): void;
+export function test(name: string, options: TestOptions, fn: TestFunction): void;
+export function test(
+  name: string,
+  optionsOrFn: TestOptions | TestFunction,
+  maybeFn?: TestFunction
+): void {
+  const options = typeof optionsOrFn === 'function' ? undefined : optionsOrFn;
+  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!;
+  
+  registry.registerTest(name, fn, options);
 }
 
 /**

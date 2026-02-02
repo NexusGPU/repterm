@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/api/hooks.ts - HooksRegistry
+ * Unit tests for src/api/hooks.ts - HooksRegistry with named fixtures
  */
 
 import { describe, test, expect, beforeEach } from 'bun:test';
@@ -11,134 +11,133 @@ describe('HooksRegistry', () => {
         hooksRegistry.clear();
     });
 
-    describe('registerBeforeEach', () => {
-        test('registers a beforeEach hook', async () => {
+    describe('registerBeforeEach with name', () => {
+        test('registers a named beforeEach hook', async () => {
             let called = false;
-            registerBeforeEach(async () => {
+            registerBeforeEach('testFixture', async () => {
                 called = true;
+                return { testFixture: 'value' };
             });
 
             const mockContext = {} as unknown as TestContext;
-            await hooksRegistry.runBeforeEach(mockContext);
+            const requiredFixtures = new Set(['testFixture']);
+            await hooksRegistry.runBeforeEachFor(mockContext, undefined, requiredFixtures);
 
             expect(called).toBe(true);
         });
 
-        test('runs multiple beforeEach hooks in order', async () => {
-            const order: number[] = [];
+        test('only runs beforeEach hooks that match requested fixtures', async () => {
+            let tmpDirHookCalled = false;
+            let otherHookCalled = false;
 
-            registerBeforeEach(async () => {
-                order.push(1);
-            });
-            registerBeforeEach(async () => {
-                order.push(2);
-            });
-            registerBeforeEach(async () => {
-                order.push(3);
+            registerBeforeEach('tmpDir', async () => {
+                tmpDirHookCalled = true;
+                return { tmpDir: '/tmp/test' };
             });
 
-            const mockContext = {} as unknown as TestContext;
-            await hooksRegistry.runBeforeEach(mockContext);
+            registerBeforeEach('other', async () => {
+                otherHookCalled = true;
+                return { other: 'value' };
+            });
 
-            expect(order).toEqual([1, 2, 3]);
+            const mockContext = { terminal: {} } as unknown as TestContext;
+            const requiredFixtures = new Set(['tmpDir']);
+            await hooksRegistry.runBeforeEachFor(mockContext, undefined, requiredFixtures);
+
+            expect(tmpDirHookCalled).toBe(true);
+            expect(otherHookCalled).toBe(false);
         });
 
-        test('returns augmented context with hook return values', async () => {
-            registerBeforeEach(async () => {
+        test('returns augmented context with fixture values', async () => {
+            registerBeforeEach('tmpDir', async () => {
                 return { tmpDir: '/tmp/test' };
             });
 
             const mockContext = { terminal: {} } as unknown as TestContext;
-            const augmentedContext = await hooksRegistry.runBeforeEach(mockContext);
+            const requiredFixtures = new Set(['tmpDir']);
+            const { context } = await hooksRegistry.runBeforeEachFor(mockContext, undefined, requiredFixtures);
 
-            expect(augmentedContext.tmpDir).toBe('/tmp/test');
-            expect(augmentedContext.terminal).toBeDefined();
+            expect(context.tmpDir).toBe('/tmp/test');
+            expect(context.terminal).toBeDefined();
         });
 
-        test('merges return values from multiple hooks', async () => {
-            registerBeforeEach(async () => {
+        test('merges return values from multiple requested fixtures', async () => {
+            registerBeforeEach('value1', async () => {
                 return { value1: 'first' };
             });
-            registerBeforeEach(async () => {
+            registerBeforeEach('value2', async () => {
                 return { value2: 'second' };
             });
 
             const mockContext = { terminal: {} } as unknown as TestContext;
-            const augmentedContext = await hooksRegistry.runBeforeEach(mockContext);
+            const requiredFixtures = new Set(['value1', 'value2']);
+            const { context } = await hooksRegistry.runBeforeEachFor(mockContext, undefined, requiredFixtures);
 
-            expect(augmentedContext.value1).toBe('first');
-            expect(augmentedContext.value2).toBe('second');
+            expect(context.value1).toBe('first');
+            expect(context.value2).toBe('second');
         });
 
-        test('later hooks can access earlier hook return values', async () => {
-            registerBeforeEach(async () => {
-                return { tmpDir: '/tmp/test' };
+        test('tracks executed fixtures correctly', async () => {
+            registerBeforeEach('fixture1', async () => {
+                return { fixture1: 'value1' };
             });
-            registerBeforeEach(async (ctx) => {
-                // Should have access to tmpDir from previous hook
-                return { fullPath: `${ctx.tmpDir}/file.txt` };
+            registerBeforeEach('fixture2', async () => {
+                return { fixture2: 'value2' };
             });
 
             const mockContext = { terminal: {} } as unknown as TestContext;
-            const augmentedContext = await hooksRegistry.runBeforeEach(mockContext);
+            const requiredFixtures = new Set(['fixture1']);
+            const { executedFixtures } = await hooksRegistry.runBeforeEachFor(mockContext, undefined, requiredFixtures);
 
-            expect(augmentedContext.tmpDir).toBe('/tmp/test');
-            expect(augmentedContext.fullPath).toBe('/tmp/test/file.txt');
-        });
-
-        test('handles hooks that return void', async () => {
-            registerBeforeEach(async () => {
-                // No return value
-            });
-            registerBeforeEach(async () => {
-                return { value: 'test' };
-            });
-
-            const mockContext = { terminal: {} } as unknown as TestContext;
-            const augmentedContext = await hooksRegistry.runBeforeEach(mockContext);
-
-            expect(augmentedContext.value).toBe('test');
+            expect(executedFixtures.has('fixture1')).toBe(true);
+            expect(executedFixtures.has('fixture2')).toBe(false);
         });
     });
 
-    describe('registerAfterEach', () => {
-        test('registers an afterEach hook', async () => {
+    describe('registerAfterEach with name', () => {
+        test('registers a named afterEach hook', async () => {
             let called = false;
-            registerAfterEach(async () => {
+            registerAfterEach('testFixture', async () => {
                 called = true;
             });
 
             const mockContext = {} as unknown as TestContext;
-            await hooksRegistry.runAfterEach(mockContext);
+            const executedFixtures = new Set(['testFixture']);
+            await hooksRegistry.runAfterEachFor(mockContext, undefined, executedFixtures);
 
             expect(called).toBe(true);
         });
 
-        test('runs multiple afterEach hooks in order', async () => {
-            const order: number[] = [];
+        test('only runs afterEach hooks that match executed fixtures', async () => {
+            let tmpDirCleanupCalled = false;
+            let otherCleanupCalled = false;
 
-            registerAfterEach(async () => {
-                order.push(1);
-            });
-            registerAfterEach(async () => {
-                order.push(2);
+            registerAfterEach('tmpDir', async () => {
+                tmpDirCleanupCalled = true;
             });
 
-            const mockContext = {} as unknown as TestContext;
-            await hooksRegistry.runAfterEach(mockContext);
+            registerAfterEach('other', async () => {
+                otherCleanupCalled = true;
+            });
 
-            expect(order).toEqual([1, 2]);
+            const mockContext = { tmpDir: '/tmp/test' } as unknown as TestContext;
+            const executedFixtures = new Set(['tmpDir']);
+            await hooksRegistry.runAfterEachFor(mockContext, undefined, executedFixtures);
+
+            expect(tmpDirCleanupCalled).toBe(true);
+            expect(otherCleanupCalled).toBe(false);
         });
 
-        test('afterEach hooks receive augmented context', async () => {
+        test('afterEach hooks receive context with fixture values', async () => {
             let receivedTmpDir: string | undefined;
 
-            registerAfterEach(async (ctx) => {
+            registerAfterEach('tmpDir', async (ctx) => {
                 receivedTmpDir = ctx.tmpDir as string;
             });
 
             const mockContext = { terminal: {}, tmpDir: '/tmp/test' } as unknown as TestContext;
-            await hooksRegistry.runAfterEach(mockContext);
+            const executedFixtures = new Set(['tmpDir']);
+            await hooksRegistry.runAfterEachFor(mockContext, undefined, executedFixtures);
 
             expect(receivedTmpDir).toBe('/tmp/test');
         });
@@ -147,14 +146,15 @@ describe('HooksRegistry', () => {
     describe('clear', () => {
         test('clears all hooks', async () => {
             let hookCalled = false;
-            registerBeforeEach(async () => {
+            registerBeforeEach('test', async () => {
                 hookCalled = true;
             });
 
             hooksRegistry.clear();
 
             const mockContext = {} as unknown as TestContext;
-            await hooksRegistry.runBeforeEach(mockContext);
+            const requiredFixtures = new Set(['test']);
+            await hooksRegistry.runBeforeEachFor(mockContext, undefined, requiredFixtures);
 
             expect(hookCalled).toBe(false);
         });

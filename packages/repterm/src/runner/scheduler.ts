@@ -189,21 +189,3 @@ export class Scheduler {
 export function createScheduler(options: SchedulerOptions): Scheduler {
   return new Scheduler(options);
 }
-
-/**
- * Run suites with parallel execution if workers > 1
- */
-export async function runWithScheduler(
-  suites: TestSuite[],
-  options: SchedulerOptions
-): Promise<RunResult[]> {
-  const workerCount = options.config.parallel.workers;
-
-  if (workerCount === 1) {
-    // Single worker - use direct execution (handled by caller)
-    throw new Error('Use runAllSuites for single worker mode');
-  }
-
-  const scheduler = createScheduler(options);
-  return scheduler.run(suites);
-}

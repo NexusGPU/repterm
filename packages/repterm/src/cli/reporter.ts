@@ -33,15 +33,16 @@ export class Reporter {
   }
 
   /**
-   * Report a single test result immediately
+   * Track last suite path for header printing
    */
   private lastSuitePath: string[] = [];
 
   /**
-   * Report a single test result immediately
+   * Called when a test is about to start (before hooks run)
+   * Prints suite headers early to ensure proper output ordering
    */
-  onTestResult(result: RunResult): void {
-    const currentPath = result.suitePath;
+  onTestStart(testInfo: { suitePath: string[]; testName: string }): void {
+    const currentPath = testInfo.suitePath;
 
     // Determine how many suite levels match the previous test
     let matchDepth = 0;
@@ -63,9 +64,14 @@ export class Reporter {
 
     // Update state
     this.lastSuitePath = currentPath;
+  }
 
-    // Print test result
-    const depth = currentPath.length;
+  /**
+   * Report a single test result immediately
+   */
+  onTestResult(result: RunResult): void {
+    // Suite headers are already printed by onTestStart, so just print the test result
+    const depth = result.suitePath.length;
     this.printTestResult(result, depth);
   }
 

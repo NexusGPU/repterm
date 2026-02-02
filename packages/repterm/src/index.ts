@@ -15,7 +15,7 @@ export { beforeEach, afterEach } from './api/hooks.js';
 
 // Re-export types for user convenience
 export type { TestContext, TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess } from './runner/models.js';
-export type { TestFunction } from './runner/models.js';
+export type { TestFunction, TestOptions, DescribeOptions } from './runner/models.js';
 export type { HookFunction, EnhancedHookFunction } from './api/hooks.js';
 
 // Plugin system

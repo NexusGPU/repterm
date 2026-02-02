@@ -2,19 +2,14 @@
  * Terminal API implementation
  * Provides high-level terminal interaction (start/send/wait/snapshot)
  * 
- * 统一执行架构：所有命令通过 PTY + launcher 执行，确保行为一致性
+ * 执行架构：
+ * - 非录制、非交互模式：使用 Bun.spawn，stdout/stderr 分离，exitCode 精确
+ * - 录制或交互模式：使用 PTY，支持复杂交互，但 exitCode 不可靠
  */
 
 import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess } from '../runner/models.js';
 import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-// Get the CLI directory path for launcher command
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const CLI_INDEX_PATH = join(__dirname, '..', 'cli', 'index.js');
 
 /**
  * CommandResult 实现类，提供 successful getter
@@ -61,6 +56,7 @@ export interface TerminalConfig {
 export interface SharedTerminalState {
   paneCount: number;
   currentActivePane?: number;  // Track which pane is currently active
+  paneOutputs: Map<number, string>;  // Per-pane output buffers for isolation
 }
 
 /**
@@ -76,6 +72,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private tmuxPaneId?: string;
   private sharedState: SharedTerminalState;
   private paneIndex?: number;  // Index of the tmux pane this terminal is bound to
+  private nonInteractiveOutput: string = '';  // 存储非交互模式下的命令输出
 
   constructor(config: TerminalConfig = {}) {
     super();
@@ -83,8 +80,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     this.recordingPath = config.recordingPath;
     this.tmuxSessionName = config.tmuxSessionName;
     this.tmuxPaneId = config.tmuxPaneId;
-    this.sharedState = { paneCount: 1 };  // Start with 1 pane (the main pane)
+    this.sharedState = { paneCount: 1, paneOutputs: new Map() };  // Start with 1 pane
     this.paneIndex = 0;  // Main terminal is pane 0
+    this.nonInteractiveOutput = '';
 
     // Create session - in recording mode, spawn asciinema; otherwise spawn shell
     this.session = new TerminalSession({
@@ -170,9 +168,16 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   /**
    * 执行命令，返回 PTYProcess
    * 
-   * 统一执行架构：所有命令通过 PTY + launcher 执行
+   * 执行模式：
+   * - 非录制、非交互（默认）：使用 Bun.spawn，stdout/stderr 分离，exitCode 精确
+   * - 录制或交互：使用 PTY，支持 expect/send，但 exitCode 返回 -1
+   * 
+   * 用法：
    * - 直接 await: 自动调用 wait()，返回 CommandResult
    * - 不 await: 返回 PTYProcess 控制器，可调用 expect/send/wait 等方法
+   * 
+   * @param command - 要执行的命令
+   * @param options - 可选配置，包括 interactive: true 启用交互模式
    */
   run(command: string, options: RunOptions = {}): PTYProcess {
     if (this.closed) {
@@ -193,9 +198,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.tmuxSessionName = sessionName;
 
       // Recording mode: 使用 asciinema --command 直接启动 tmux
+      // 必须显式设置 TERM=xterm-256color，否则 asciinema 会检测父进程的终端类型
       this.session.start({
         shell: 'asciinema',
         args: ['rec', '--command', `tmux new -s ${sessionName}`, this.recordingPath, '--overwrite'],
+        env: {
+          TERM: 'xterm-256color',
+        },
       });
 
       // 等待 tmux 启动就绪
@@ -274,13 +283,26 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
   /**
    * Wait for text to appear in terminal output
+   * In recording mode with multi-pane, uses tmux capture-pane for isolation
    */
   async waitForText(text: string, options: WaitOptions = {}): Promise<void> {
     const timeout = options.timeout ?? 5000;
+    const shouldStripAnsi = options.stripAnsi ?? true;  // Default to true
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeout) {
-      const output = this.session.getOutput();
+      let output: string;
+
+      if (this.recording && this.paneIndex !== undefined && this.tmuxSessionName) {
+        // Recording mode: capture current pane's output via tmux
+        const rawOutput = await this.capturePaneOutput();
+        // Strip ANSI sequences if enabled (default)
+        output = shouldStripAnsi ? this.stripAnsi(rawOutput) : rawOutput;
+      } else {
+        // Non-recording mode: use session buffer
+        output = this.getAllOutput();
+      }
+
       if (output.includes(text)) {
         return;
       }
@@ -292,13 +314,87 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
   /**
    * Get snapshot of current terminal output
+   * In recording mode, returns current pane's output (stripped of ANSI)
    */
   async snapshot(): Promise<string> {
     if (this.closed) {
       throw new Error('Terminal is closed');
     }
 
-    return this.session.getOutput();
+    if (this.recording && this.paneIndex !== undefined && this.tmuxSessionName) {
+      // Recording mode: capture current pane's output
+      const rawOutput = await this.capturePaneOutput();
+      return this.stripAnsi(rawOutput);
+    }
+
+    return this.getAllOutput();
+  }
+
+  /**
+   * Get all output (session + non-interactive commands)
+   */
+  private getAllOutput(): string {
+    const sessionOutput = this.session.getOutput();
+    return sessionOutput + this.nonInteractiveOutput;
+  }
+
+  /**
+   * Capture output from current pane using tmux capture-pane
+   * Used in recording mode for per-pane output isolation
+   */
+  private async capturePaneOutput(): Promise<string> {
+    if (!this.tmuxSessionName || this.paneIndex === undefined) {
+      return '';
+    }
+
+    // Use tmux capture-pane to get current pane's text content
+    // -p: output to stdout instead of buffer
+    // -t: specify target pane
+    // -S -: start from scrollback top
+    // -E -: end at current line
+    const result = await this.runTmuxCommand(
+      `capture-pane -p -t ${this.tmuxSessionName}:0.${this.paneIndex} -S - -E -`
+    );
+
+    // Update shared pane output buffer
+    this.sharedState.paneOutputs.set(this.paneIndex, result);
+
+    return result;
+  }
+
+  /**
+   * Execute a tmux command and return its output
+   */
+  private async runTmuxCommand(args: string): Promise<string> {
+    try {
+      const proc = Bun.spawn(['tmux', ...args.split(' ')], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+
+      return stdout;
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Strip ANSI escape sequences from text
+   */
+  private stripAnsi(text: string): string {
+    // Match common ANSI escape sequences
+    const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
+    return text.replace(ansiRegex, '');
+  }
+
+  /**
+   * Append output from non-interactive command (internal use)
+   */
+  appendNonInteractiveOutput(output: string): void {
+    this.nonInteractiveOutput += output;
   }
 
   /**
@@ -395,6 +491,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
+   * Check if terminal is in recording mode
+   */
+  isRecording(): boolean {
+    return this.recording;
+  }
+
+  /**
    * Type text with human-like delays (for recording mode)
    * Following simple-example.js pattern: 80ms base delay with ±30% randomization
    */
@@ -418,14 +521,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Wait for output to stabilize (from simple-example.js)
-   * Waits for new output to appear, then waits for it to stop changing
+   * Wait for output to stabilize
+   * Waits for output to stop changing (consecutive stable checks)
    */
   private async waitForOutputStable(timeout: number = 10000): Promise<void> {
     const startTime = Date.now();
-    const startLength = this.session.getOutput().length;
-    let hasNewOutput = false;
-    let lastLength = startLength;
+    let lastLength = this.session.getOutput().length;
     let stableCount = 0;
     const requiredStableChecks = 3; // Need 3 consecutive stable checks
     const checkInterval = 100; // Check every 100ms
@@ -434,19 +535,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await this.sleep(checkInterval);
 
       const currentLength = this.session.getOutput().length;
-      const newBytes = currentLength - startLength;
-
-      // Check if there's new output (at least 10 bytes to avoid just control chars)
-      if (newBytes > 10) {
-        hasNewOutput = true;
-      }
 
       // Check if output is stable (length not changing)
       if (currentLength === lastLength) {
         stableCount++;
 
-        // If we have new output and it's been stable for required checks, we're done
-        if (hasNewOutput && stableCount >= requiredStableChecks) {
+        // If output has been stable for required checks, we're done
+        if (stableCount >= requiredStableChecks) {
           return;
         }
       } else {
@@ -467,37 +562,10 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Read launcher result from temp files
+   * Wait for output to stabilize (public, for PTYProcessImpl)
    */
-  async readLauncherResult(id: string, command: string, startTime: number): Promise<CommandResult> {
-    const stdoutPath = `/tmp/repterm-${id}.stdout`;
-    const stderrPath = `/tmp/repterm-${id}.stderr`;
-    const exitPath = `/tmp/repterm-${id}.exit`;
-
-    // Read results with fallbacks
-    const [stdout, stderr, exitStr] = await Promise.all([
-      Bun.file(stdoutPath).text().catch(() => ''),
-      Bun.file(stderrPath).text().catch(() => ''),
-      Bun.file(exitPath).text().catch(() => '-1'),
-    ]);
-
-    // Cleanup temp files
-    const { unlink } = await import('fs/promises');
-    await Promise.all([
-      unlink(stdoutPath).catch(() => { }),
-      unlink(stderrPath).catch(() => { }),
-      unlink(exitPath).catch(() => { }),
-    ]);
-
-    const exitCode = parseInt(exitStr.trim(), 10);
-    return new CommandResultImpl({
-      code: Number.isNaN(exitCode) ? -1 : exitCode,
-      stdout,
-      stderr,
-      output: stdout + stderr,
-      duration: Date.now() - startTime,
-      command,
-    });
+  async waitForOutputStablePublic(timeout: number = 10000): Promise<void> {
+    return this.waitForOutputStable(timeout);
   }
 
   /**
@@ -533,21 +601,28 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 /**
  * PTYProcess 实现类
  * 实现 PromiseLike 接口，支持 await 和控制器两种用法
+ * 
+ * 执行模式：
+ * - 非录制、非交互：使用 Bun.spawn，stdout/stderr 分离，exitCode 精确
+ * - 录制或交互：使用 PTY，支持 expect/send，但 exitCode 不可靠（返回 -1）
  */
 class PTYProcessImpl implements PTYProcess {
   private terminal: Terminal;
-  private launcherId: string;
   private commandStarted: boolean = false;
   private command: string;
   private options: RunOptions;
   private startTime: number;
 
+  // 用于非录制、非交互模式的 Bun.spawn 进程
+  private bunProcess?: ReturnType<typeof Bun.spawn>;
+  private isInteractive: boolean;
+
   constructor(terminal: Terminal, command: string, options: RunOptions = {}) {
     this.terminal = terminal;
-    this.launcherId = crypto.randomUUID();
     this.command = command;
     this.options = options;
     this.startTime = Date.now();
+    this.isInteractive = options.interactive ?? false;
   }
 
   // ===== PromiseLike 实现 =====
@@ -579,42 +654,79 @@ class PTYProcessImpl implements PTYProcess {
     return this.wait().finally(onfinally);
   }
 
-  // ===== 交互式控制方法 =====
+  // ===== 内部方法 =====
 
   /**
-   * Start the command with launcher wrapper
+   * 判断是否使用 PTY 模式（录制或交互）
+   */
+  private usePtyMode(): boolean {
+    return this.terminal.isRecording() || this.isInteractive;
+  }
+
+  /**
+   * 启动命令
+   * - PTY 模式：通过 terminal.executeInPty 执行
+   * - Bun.spawn 模式：直接启动子进程
    */
   private async startCommand(): Promise<void> {
     if (this.commandStarted) return;
     this.commandStarted = true;
 
-    // Escape single quotes in the command and wrap with single quotes
-    // This ensures shell special characters (;, |, &, etc.) are passed to launcher
-    const escapedCommand = this.command.replace(/'/g, "'\\''");
-    const launcherCmd = `bun ${CLI_INDEX_PATH} __launcher__ --id=${this.launcherId} -- '${escapedCommand}'`;
-    await this.terminal.executeInPty(launcherCmd);
+    if (this.usePtyMode()) {
+      // 录制模式或交互式：使用 PTY
+      await this.terminal.executeInPty(this.command);
+    } else {
+      // 非录制、非交互：使用 Bun.spawn
+      const env: Record<string, string> = {};
+      for (const [key, value] of Object.entries(this.options.env ?? process.env)) {
+        if (value !== undefined && typeof value === 'string') {
+          env[key] = value;
+        }
+      }
+
+      this.bunProcess = Bun.spawn(['sh', '-c', this.command], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+        cwd: this.options.cwd ?? process.cwd(),
+        env,
+      });
+    }
   }
+
+  // ===== 交互式控制方法 =====
 
   /**
    * Wait for specified text to appear
+   * 仅在交互模式或录制模式下可用
    */
   async expect(text: string, options?: { timeout?: number }): Promise<void> {
+    if (!this.usePtyMode()) {
+      throw new Error('expect() requires interactive mode: terminal.run(cmd, { interactive: true })');
+    }
     await this.startCommand();
     await this.terminal.waitForText(text, options);
   }
 
   /**
    * Send input to the process (with newline)
+   * 仅在交互模式或录制模式下可用
    */
   async send(input: string): Promise<void> {
+    if (!this.usePtyMode()) {
+      throw new Error('send() requires interactive mode: terminal.run(cmd, { interactive: true })');
+    }
     await this.startCommand();
     await this.terminal.send(input + '\r');
   }
 
   /**
    * Send raw input to the process (without newline)
+   * 仅在交互模式或录制模式下可用
    */
   async sendRaw(input: string): Promise<void> {
+    if (!this.usePtyMode()) {
+      throw new Error('sendRaw() requires interactive mode: terminal.run(cmd, { interactive: true })');
+    }
     await this.startCommand();
     await this.terminal.send(input);
   }
@@ -625,30 +737,71 @@ class PTYProcessImpl implements PTYProcess {
   async wait(options?: { timeout?: number }): Promise<CommandResult> {
     await this.startCommand();
 
-    // Wait for output to stabilize
     const timeout = options?.timeout ?? this.options.timeout ?? 30000;
-    const waitStartTime = Date.now();
 
-    // Poll for exit file to exist
-    const exitPath = `/tmp/repterm-${this.launcherId}.exit`;
-    while (Date.now() - waitStartTime < timeout) {
-      const exitFile = Bun.file(exitPath);
-      if (await exitFile.exists()) {
-        // Give a small delay for files to be fully written
-        await new Promise(resolve => setTimeout(resolve, 100));
-        break;
+    if (this.usePtyMode()) {
+      // PTY 模式：等待输出稳定
+      await this.terminal.waitForOutputStablePublic(timeout);
+
+      const output = await this.terminal.snapshot();
+      return new CommandResultImpl({
+        code: -1, // PTY 模式无法可靠获取退出码，设为 -1 表示不可用
+        stdout: output,
+        stderr: '',
+        output,
+        duration: Date.now() - this.startTime,
+        command: this.command,
+      });
+    } else {
+      // Bun.spawn 模式：等待进程结束
+      try {
+        const proc = this.bunProcess!;
+        const stdoutStream = proc.stdout as ReadableStream<Uint8Array>;
+        const stderrStream = proc.stderr as ReadableStream<Uint8Array>;
+
+        const [stdout, stderr, exitCode] = await Promise.race([
+          Promise.all([
+            new Response(stdoutStream).text(),
+            new Response(stderrStream).text(),
+            proc.exited,
+          ]),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => {
+              this.bunProcess?.kill();
+              reject(new Error(`Command timeout after ${timeout}ms: ${this.command}`));
+            }, timeout)
+          ),
+        ]);
+
+        // 将输出存储到终端，支持 expect(terminal).toContainText() 断言
+        const combinedOutput = stdout + stderr;
+        this.terminal.appendNonInteractiveOutput(combinedOutput);
+
+        return new CommandResultImpl({
+          code: exitCode ?? -1,
+          stdout,
+          stderr,
+          output: combinedOutput,
+          duration: Date.now() - this.startTime,
+          command: this.command,
+        });
+      } catch (error) {
+        // Ensure process is killed on error
+        this.bunProcess?.kill();
+        throw error;
       }
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
-
-    return this.terminal.readLauncherResult(this.launcherId, this.command, this.startTime);
   }
 
   /**
    * Send Ctrl+C to interrupt the command
    */
   async interrupt(): Promise<void> {
-    await this.terminal.send('\x03');  // Ctrl+C
+    if (this.bunProcess) {
+      this.bunProcess.kill('SIGINT');
+    } else {
+      await this.terminal.send('\x03');  // Ctrl+C
+    }
   }
 }
 

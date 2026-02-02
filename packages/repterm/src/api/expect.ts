@@ -30,7 +30,7 @@ export class AssertionError extends Error {
  * 否定断言类 - Terminal
  */
 class NegatedTerminalExpect {
-  constructor(private terminal: TerminalAPI) {}
+  constructor(private terminal: TerminalAPI) { }
 
   /**
    * Assert that terminal does NOT contain text
@@ -67,7 +67,7 @@ class NegatedTerminalExpect {
  * Terminal 断言类
  */
 export class TerminalExpect {
-  constructor(private terminal: TerminalAPI) {}
+  constructor(private terminal: TerminalAPI) { }
 
   /**
    * 否定断言入口
@@ -92,13 +92,6 @@ export class TerminalExpect {
   }
 
   /**
-   * @deprecated Use expect(terminal).not.toContainText() instead
-   */
-  async not_toContainText(expected: string): Promise<void> {
-    return this.not.toContainText(expected);
-  }
-
-  /**
    * Assert that terminal output matches regex
    */
   async toMatchPattern(pattern: RegExp): Promise<void> {
@@ -120,7 +113,7 @@ export class TerminalExpect {
  * 否定断言类 - CommandResult
  */
 class NegatedCommandResultExpect {
-  constructor(private result: CommandResult) {}
+  constructor(private result: CommandResult) { }
 
   /**
    * Assert command did NOT succeed (exit code !== 0)
@@ -231,7 +224,7 @@ class NegatedCommandResultExpect {
  * CommandResult 断言类，支持链式调用
  */
 export class CommandResultExpect {
-  constructor(private result: CommandResult) {}
+  constructor(private result: CommandResult) { }
 
   /**
    * 否定断言入口

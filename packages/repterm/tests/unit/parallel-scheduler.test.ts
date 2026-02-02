@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { Scheduler, createScheduler, runWithScheduler } from '../../src/runner/scheduler.js';
+import { Scheduler, createScheduler } from '../../src/runner/scheduler.js';
 import { loadConfig } from '../../src/runner/config.js';
 
 describe('Scheduler', () => {
@@ -40,18 +40,5 @@ describe('createScheduler', () => {
             artifactBaseDir: '/tmp/artifacts',
         });
         expect(scheduler).toBeInstanceOf(Scheduler);
-    });
-});
-
-describe('runWithScheduler', () => {
-    test('throws error for single worker mode', async () => {
-        const singleWorkerConfig = loadConfig({ parallel: { workers: 1 } });
-
-        await expect(
-            runWithScheduler([], {
-                config: singleWorkerConfig,
-                artifactBaseDir: '/tmp/artifacts',
-            })
-        ).rejects.toThrow('Use runAllSuites for single worker mode');
     });
 });

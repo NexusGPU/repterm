@@ -1,5 +1,5 @@
 /**
- * 示例 4: 使用 Hooks 实现 Fixtures
+ * 示例 4: 使用 Hooks 实现 Fixtures (懒加载)
  * 
  * 运行方式: bun src/cli/index.ts examples/04-fixtures-with-hooks.ts
  * 
@@ -12,17 +12,20 @@ import * as path from 'path';
 import * as os from 'os';
 
 describe('临时目录 Fixture', () => {
-  // beforeEach 返回的对象会被注入到 context
-  beforeEach(async () => {
+  // 注册名为 'tmpDir' 的 fixture
+  // 只有测试参数中请求了 tmpDir 才会执行
+  beforeEach('tmpDir', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'repterm-example-'));
     console.log(`  [Setup] Created: ${tmpDir}`);
     return { tmpDir };
   });
 
-  // afterEach 可以访问之前注入的属性
-  afterEach(async ({ tmpDir }) => {
+  // 对应的 afterEach 也需要指定名称
+  // 只有 beforeEach 被执行了才会执行清理
+  afterEach('tmpDir', async (ctx) => {
+    const tmpDir = ctx.tmpDir as string | undefined;
     if (tmpDir) {
-      await fs.rm(tmpDir as string, { recursive: true }).catch(() => {});
+      await fs.rm(tmpDir, { recursive: true }).catch(() => { });
       console.log(`  [Cleanup] Removed: ${tmpDir}`);
     }
   });
@@ -33,11 +36,18 @@ describe('临时目录 Fixture', () => {
     expect(result).toHaveStdout('test.txt');
   });
 
+  test('不运行 before after', async ({ terminal }) => {
+    // 这个测试不需要 tmpDir，所以不会触发 beforeEach/afterEach
+    console.log('  [Test] 此测试不会触发 tmpDir fixture');
+    await terminal.run('echo "Hello World"');
+  });
+
   test('在临时目录中写入和读取文件', async ({ terminal, tmpDir }) => {
     await terminal.run(`echo "Hello World" > ${tmpDir}/hello.txt`);
-    
+
     const readResult = await terminal.run(`cat ${tmpDir}/hello.txt`);
     expect(readResult).toSucceed();
     expect(readResult).toHaveStdout('Hello World');
   });
 });
+
