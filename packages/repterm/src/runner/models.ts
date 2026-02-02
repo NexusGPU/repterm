@@ -22,6 +22,14 @@ export interface DescribeOptions {
   // 未来可扩展：timeout 等
 }
 
+/**
+ * Named hook entry for beforeAll/afterAll
+ */
+export interface NamedHookEntry {
+  name?: string;                  // Optional fixture name
+  fn: (context: TestContext) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
+}
+
 export interface TestSuite {
   id: string;
   name: string;
@@ -30,6 +38,8 @@ export interface TestSuite {
   parent?: TestSuite; // Parent suite for nested describe() blocks
   config: SuiteConfig;
   options?: DescribeOptions; // describe() 的配置选项
+  beforeAll?: NamedHookEntry[];   // Suite-level setup hooks
+  afterAll?: NamedHookEntry[];    // Suite-level teardown hooks
 }
 
 export interface SuiteConfig {
@@ -136,6 +146,13 @@ export interface RunOptions {
    * 交互式模式支持 expect/send 方法，但 exitCode 不可靠
    */
   interactive?: boolean;
+
+  /**
+   * 静默模式：即使在录制模式下也使用 Bun.spawn 执行
+   * 用于需要精确解析输出的场景（如 JSON 解析）
+   * 注意：此模式下命令不会在录制中显示
+   */
+  silent?: boolean;
 }
 
 export interface TerminalAPI {
@@ -171,6 +188,9 @@ export interface TerminalAPI {
 
   /** 创建新的终端实例（多终端测试） */
   create(): Promise<TerminalAPI>;
+
+  /** 检查是否处于录制模式 */
+  isRecording?(): boolean;
 }
 
 export interface WaitOptions {

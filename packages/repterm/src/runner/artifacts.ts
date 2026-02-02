@@ -97,7 +97,7 @@ export function generateRunId(): string {
 /**
  * Create artifact manager for a new run
  */
-export function createArtifactManager(baseDir: string = './artifacts'): ArtifactManager {
+export function createArtifactManager(baseDir: string = '/tmp/repterm'): ArtifactManager {
   const runId = generateRunId();
   return new ArtifactManager({ baseDir, runId });
 }

@@ -32,6 +32,4 @@ Thumbs.db
 # Test coverage
 coverage/
 
-# Artifacts (generated during tests)
-artifacts/
 *.cast

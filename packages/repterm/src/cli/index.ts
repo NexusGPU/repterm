@@ -12,7 +12,7 @@ import { runAllSuites } from '../runner/runner.js';
 import { createScheduler } from '../runner/scheduler.js';
 import { createReporter } from './reporter.js';
 import { checkDependencies, printDependencyCheck } from '../utils/dependencies.js';
-import type { RunResult, TestSuite } from '../runner/models.js';
+import type { RunResult } from '../runner/models.js';
 
 /**
  * Main CLI entry point
@@ -44,6 +44,12 @@ async function main(): Promise<void> {
           type: 'boolean',
           short: 'h',
           default: false,
+        },
+        'slow-threshold': {
+          type: 'string', // parseArgs doesn't support number type directly for values
+        },
+        'recording-dir': {
+          type: 'string',
         },
       },
       allowPositionals: true,
@@ -78,7 +84,7 @@ async function main(): Promise<void> {
     });
 
     // Create artifact manager
-    const artifactManager = createArtifactManager();
+    const artifactManager = createArtifactManager(args.values['recording-dir']);
 
     // Discover test files
     const testFiles = await discoverTests(testPaths);
@@ -112,14 +118,14 @@ async function main(): Promise<void> {
 
     // Get registered tests from the registry
     // Use relative import to ensure we use the same registry instance
-    const { getTests } = await import('../index.js');
-    const allSuites = getTests();
-    
+    const { registry } = await import('../api/test.js');
+    const allSuites = registry.getRootSuites();
+
     // Apply test filtering based on --record flag
     const { filterSuites, countTests } = await import('../runner/filter.js');
     const suites = filterSuites(allSuites, config.record.enabled);
     const totalTests = countTests(suites);
-    
+
     if (totalTests === 0) {
       if (config.record.enabled) {
         console.error('No tests marked with { record: true } found.');
@@ -130,13 +136,18 @@ async function main(): Promise<void> {
       }
       process.exit(1);
     }
-    
+
     const modeLabel = config.record.enabled ? ' (recording mode)' : '';
     console.log(`Running ${totalTests} test(s)${modeLabel}...`);
     console.log('');
 
     // Create reporter for streaming output
-    const reporter = createReporter({ verbose: args.values.verbose });
+    const reporter = createReporter({
+      verbose: args.values.verbose,
+      slowThreshold: args.values['slow-threshold']
+        ? parseInt(args.values['slow-threshold'], 10)
+        : undefined,
+    });
 
     // Run tests (parallel or sequential based on worker count)
     let results;
@@ -186,6 +197,8 @@ Options:
   -w, --workers <n>    Number of parallel workers (default: 1)
   -t, --timeout <ms>   Test timeout in milliseconds (default: 30000)
   -v, --verbose        Verbose output with stack traces
+  --slow-threshold <ms> Show duration for tests slower than this (default: 50)
+  --recording-dir <path>   Directory for recording artifacts (default: /tmp/repterm)
   -h, --help           Show this help message
 
 Test Modes:

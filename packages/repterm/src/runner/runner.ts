@@ -1,6 +1,6 @@
 /**
  * Single-runner execution pipeline
- * Executes test suites and cases, manages lifecycle
+ * Executes test suites and cases, manages lifecycle with onion execution model
  */
 
 import type { TestSuite, TestCase, RunResult, TestContext } from './models.js';
@@ -39,17 +39,64 @@ function getTestFunctionParameters(fn: (context: TestContext) => Promise<void>):
 }
 
 /**
- * Execute a single test suite
+ * Execute tests in a suite (without lifecycle hooks)
+ * This is the internal function for running tests only
  */
-export async function runSuite(
+async function runTestsInSuite(
   suite: TestSuite,
-  options: RunnerOptions
+  options: RunnerOptions,
+  inheritedContext: Record<string, unknown> = {}
 ): Promise<RunResult[]> {
   const results: RunResult[] = [];
 
   for (const testCase of suite.tests) {
-    const result = await runTest(testCase, suite, options);
+    const result = await runTest(testCase, suite, options, inheritedContext);
     results.push(result);
+  }
+
+  return results;
+}
+
+/**
+ * Execute a single test suite with lifecycle hooks (onion model)
+ *
+ * Execution order:
+ * 1. Run beforeAll hooks for this suite
+ * 2. Merge beforeAll context with inherited context
+ * 3. Run tests in this suite
+ * 4. Recursively run child suites
+ * 5. Run afterAll hooks for this suite
+ */
+export async function runSuite(
+  suite: TestSuite,
+  options: RunnerOptions,
+  inheritedContext: Record<string, unknown> = {}
+): Promise<RunResult[]> {
+  const results: RunResult[] = [];
+  let suiteContext = { ...inheritedContext };
+
+  try {
+    // 1. Run beforeAll hooks for this suite
+    suiteContext = await hooksRegistry.runBeforeAllFor(suite, inheritedContext);
+
+    // 2. Run tests in this suite with the merged context
+    const testResults = await runTestsInSuite(suite, options, suiteContext);
+    results.push(...testResults);
+
+    // 3. Recursively run child suites with the merged context
+    if (suite.suites && suite.suites.length > 0) {
+      for (const childSuite of suite.suites) {
+        const childResults = await runSuite(childSuite, options, suiteContext);
+        results.push(...childResults);
+      }
+    }
+  } finally {
+    // 4. Run afterAll hooks for this suite (always, even if tests failed)
+    try {
+      await hooksRegistry.runAfterAllFor(suite, suiteContext);
+    } catch (hookError) {
+      console.error(`Error in afterAll hook for suite "${suite.name}":`, hookError);
+    }
   }
 
   return results;
@@ -74,12 +121,13 @@ function getInheritedRecordConfig(suite: TestSuite): boolean | undefined {
 export async function runTest(
   testCase: TestCase,
   suite: TestSuite,
-  options: RunnerOptions
+  options: RunnerOptions,
+  inheritedContext: Record<string, unknown> = {}
 ): Promise<RunResult> {
   // Build suite path
   const suitePath: string[] = [suite.name];
   let parent = suite.parent;
-  while (parent && parent.id !== 'default' && !parent.id.startsWith('file-')) {
+  while (parent && parent.id !== 'default' && !parent.id.startsWith('file-') && !parent.id.startsWith('dir-')) {
     suitePath.unshift(parent.name);
     parent = parent.parent;
   }
@@ -109,9 +157,10 @@ export async function runTest(
     recordingPath,
   });
 
-  // Build initial test context
+  // Build initial test context with inherited context from beforeAll hooks
   let context: TestContext = {
     terminal,
+    ...inheritedContext,
     ...testCase.fixtures,
   };
 
@@ -196,7 +245,7 @@ export async function runTest(
 }
 
 /**
- * Execute all test suites
+ * Execute all test suites with lifecycle hooks
  */
 export async function runAllSuites(
   suites: TestSuite[],

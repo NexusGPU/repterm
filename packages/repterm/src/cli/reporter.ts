@@ -8,6 +8,8 @@ import type { RunResult } from '../runner/models.js';
 export interface ReporterOptions {
   verbose?: boolean;
   colors?: boolean;
+  /** Show duration for tests slower than this threshold (ms), default: 50 */
+  slowThreshold?: number;
 }
 
 interface SuiteNode {
@@ -23,13 +25,14 @@ interface SuiteNode {
  */
 export class Reporter {
   private options: ReporterOptions;
-  private slowThreshold = 100; // Show duration for tests slower than this (ms)
+  private slowThreshold: number;
 
   constructor(options: ReporterOptions = {}) {
     this.options = {
       verbose: options.verbose ?? false,
       colors: options.colors ?? true,
     };
+    this.slowThreshold = options.slowThreshold ?? 50;
   }
 
   /**

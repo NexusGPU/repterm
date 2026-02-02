@@ -40,11 +40,31 @@ interface NamedAfterEachEntry {
 }
 
 /**
+ * Named beforeAll hook entry
+ */
+interface NamedBeforeAllEntry {
+  name?: string;
+  fn: EnhancedHookFunction;
+  suiteId: string;
+}
+
+/**
+ * Named afterAll hook entry
+ */
+interface NamedAfterAllEntry {
+  name?: string;
+  fn: HookFunction;
+  suiteId: string;
+}
+
+/**
  * Global hooks storage with named fixture support
  */
 class HooksRegistry {
   private namedBeforeEachHooks: NamedBeforeEachEntry[] = [];
   private namedAfterEachHooks: NamedAfterEachEntry[] = [];
+  private suiteBeforeAllHooks: Map<string, NamedBeforeAllEntry[]> = new Map();
+  private suiteAfterAllHooks: Map<string, NamedAfterAllEntry[]> = new Map();
 
   /**
    * Register a named beforeEach hook (lazy execution)
@@ -64,6 +84,32 @@ class HooksRegistry {
    */
   registerAfterEach(name: string, fn: HookFunction, suiteId?: string): void {
     this.namedAfterEachHooks.push({ name, fn, suiteId });
+  }
+
+  /**
+   * Register a beforeAll hook for a suite
+   * @param name Optional fixture name
+   * @param fn Hook function
+   * @param suiteId Suite ID to scope the hook
+   */
+  registerBeforeAll(name: string | undefined, fn: EnhancedHookFunction, suiteId: string): void {
+    if (!this.suiteBeforeAllHooks.has(suiteId)) {
+      this.suiteBeforeAllHooks.set(suiteId, []);
+    }
+    this.suiteBeforeAllHooks.get(suiteId)!.push({ name, fn, suiteId });
+  }
+
+  /**
+   * Register an afterAll hook for a suite
+   * @param name Optional fixture name
+   * @param fn Hook function
+   * @param suiteId Suite ID to scope the hook
+   */
+  registerAfterAll(name: string | undefined, fn: HookFunction, suiteId: string): void {
+    if (!this.suiteAfterAllHooks.has(suiteId)) {
+      this.suiteAfterAllHooks.set(suiteId, []);
+    }
+    this.suiteAfterAllHooks.get(suiteId)!.push({ name, fn, suiteId });
   }
 
   /**
@@ -148,11 +194,54 @@ class HooksRegistry {
   }
 
   /**
+   * Run beforeAll hooks for a suite
+   * @param suite The suite to run hooks for
+   * @param inheritedContext Context inherited from parent suites
+   * @returns Augmented context with values from beforeAll hooks
+   */
+  async runBeforeAllFor(
+    suite: TestSuite,
+    inheritedContext: Record<string, unknown> = {}
+  ): Promise<Record<string, unknown>> {
+    const hooks = this.suiteBeforeAllHooks.get(suite.id) ?? [];
+    let context = { ...inheritedContext } as TestContext;
+
+    for (const entry of hooks) {
+      const result = await entry.fn(context);
+      if (result && typeof result === 'object') {
+        context = { ...context, ...result };
+      }
+    }
+
+    return context;
+  }
+
+  /**
+   * Run afterAll hooks for a suite
+   * @param suite The suite to run hooks for
+   * @param context Context to pass to hooks
+   */
+  async runAfterAllFor(
+    suite: TestSuite,
+    context: Record<string, unknown> = {}
+  ): Promise<void> {
+    const hooks = this.suiteAfterAllHooks.get(suite.id) ?? [];
+
+    // Run in reverse order for proper cleanup
+    for (let i = hooks.length - 1; i >= 0; i--) {
+      const entry = hooks[i];
+      await entry.fn(context as TestContext);
+    }
+  }
+
+  /**
    * Clear all hooks (for testing)
    */
   clear(): void {
     this.namedBeforeEachHooks = [];
     this.namedAfterEachHooks = [];
+    this.suiteBeforeAllHooks.clear();
+    this.suiteAfterAllHooks.clear();
   }
 }
 
@@ -197,15 +286,80 @@ export function beforeEach(name: string, fn: EnhancedHookFunction): void {
 
 /**
  * Register a named afterEach hook
- * 
+ *
  * 只有对应的 beforeEach 被执行了，此 Hook 才会执行。
- * 
+ *
  * @param name Fixture 名称（与 beforeEach 注册的名称一致）
  * @param fn Hook 函数
  */
 export function afterEach(name: string, fn: HookFunction): void {
   const suiteId = registry.getCurrentSuiteId();
   hooksRegistry.registerAfterEach(name, fn, suiteId);
+}
+
+/**
+ * Register a beforeAll hook for the current suite
+ *
+ * 在 Suite 中所有测试执行前只运行一次。
+ * 返回的对象会被合并到 Context，传递给所有测试。
+ *
+ * @param fn Hook 函数，返回对象会被注入到 context
+ *
+ * @example
+ * describe('admin tests', () => {
+ *   beforeAll(async () => {
+ *     const adminUser = await createAdminUser();
+ *     return { adminUser };
+ *   });
+ *
+ *   afterAll(async ({ adminUser }) => {
+ *     await deleteUser(adminUser);
+ *   });
+ *
+ *   test('admin can see dashboard', async ({ terminal, adminUser }) => {
+ *     // adminUser is available from beforeAll
+ *   });
+ * });
+ */
+export function beforeAll(fn: EnhancedHookFunction): void;
+export function beforeAll(name: string, fn: EnhancedHookFunction): void;
+export function beforeAll(
+  nameOrFn: string | EnhancedHookFunction,
+  maybeFn?: EnhancedHookFunction
+): void {
+  const suiteId = registry.getCurrentSuiteId();
+  if (!suiteId) {
+    throw new Error('beforeAll must be called inside a describe() block');
+  }
+
+  const name = typeof nameOrFn === 'string' ? nameOrFn : undefined;
+  const fn = typeof nameOrFn === 'function' ? nameOrFn : maybeFn!;
+
+  hooksRegistry.registerBeforeAll(name, fn, suiteId);
+}
+
+/**
+ * Register an afterAll hook for the current suite
+ *
+ * 在 Suite 中所有测试执行后只运行一次。
+ *
+ * @param fn Hook 函数
+ */
+export function afterAll(fn: HookFunction): void;
+export function afterAll(name: string, fn: HookFunction): void;
+export function afterAll(
+  nameOrFn: string | HookFunction,
+  maybeFn?: HookFunction
+): void {
+  const suiteId = registry.getCurrentSuiteId();
+  if (!suiteId) {
+    throw new Error('afterAll must be called inside a describe() block');
+  }
+
+  const name = typeof nameOrFn === 'string' ? nameOrFn : undefined;
+  const fn = typeof nameOrFn === 'function' ? nameOrFn : maybeFn!;
+
+  hooksRegistry.registerAfterAll(name, fn, suiteId);
 }
 
 /**

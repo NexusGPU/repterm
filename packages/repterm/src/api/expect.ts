@@ -1,9 +1,62 @@
 /**
  * Playwright-style expect() matchers
  * Provides assertions for terminal output and command results
+ * Supports custom matchers via expect.extend()
  */
 
 import type { TerminalAPI, CommandResult } from '../runner/models.js';
+
+// ===== Matcher Types =====
+
+/**
+ * Result returned by a custom matcher
+ */
+export interface MatcherResult {
+  pass: boolean;
+  message: () => string;
+  actual?: unknown;
+  expected?: unknown;
+}
+
+/**
+ * Context available to custom matchers
+ */
+export interface MatcherContext {
+  isNot: boolean;
+  equals: (a: unknown, b: unknown) => boolean;
+}
+
+/**
+ * Custom matcher function type
+ */
+export type MatcherFunction<T = unknown, Args extends unknown[] = unknown[]> =
+  (this: MatcherContext, received: T, ...args: Args) => MatcherResult | Promise<MatcherResult>;
+
+/**
+ * Storage for custom matchers registered via expect.extend()
+ */
+const customMatchers: Record<string, MatcherFunction> = {};
+
+/**
+ * Simple deep equality check
+ */
+function deepEquals(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object' || a === null || b === null) return false;
+
+  const keysA = Object.keys(a as object);
+  const keysB = Object.keys(b as object);
+  if (keysA.length !== keysB.length) return false;
+
+  for (const key of keysA) {
+    if (!keysB.includes(key)) return false;
+    if (!deepEquals((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Assertion error with expected/actual values
@@ -339,6 +392,46 @@ export class CommandResultExpect {
   }
 }
 
+// ===== Generic Expect for Custom Matchers =====
+
+/**
+ * Generic expect class that supports custom matchers
+ */
+export class GenericExpect<T> {
+  private _isNot = false;
+
+  constructor(private value: T) {
+    // Bind all custom matchers to this instance
+    for (const [name, fn] of Object.entries(customMatchers)) {
+      (this as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
+        const context: MatcherContext = {
+          isNot: this._isNot,
+          equals: deepEquals,
+        };
+        const result = await fn.call(context, this.value, ...args);
+
+        const pass = this._isNot ? !result.pass : result.pass;
+        if (!pass) {
+          throw new AssertionError(
+            result.message(),
+            result.expected,
+            result.actual
+          );
+        }
+        return this; // Support chaining
+      };
+    }
+  }
+
+  /**
+   * Negation modifier
+   */
+  get not(): this {
+    this._isNot = true;
+    return this;
+  }
+}
+
 // ===== expect() 函数 =====
 
 /**
@@ -369,7 +462,27 @@ function isTerminalAPI(value: unknown): value is TerminalAPI {
 }
 
 /**
- * Create expect() matcher for terminal or command result
+ * Expect function interface with extend method
+ */
+export interface ExpectWithExtend {
+  (value: TerminalAPI): TerminalExpect;
+  (value: CommandResult): CommandResultExpect;
+  <T>(value: T): GenericExpect<T>;
+  /**
+   * Register custom matchers
+   * @example
+   * expect.extend({
+   *   toBeRunning(received, timeout) {
+   *     // matcher implementation
+   *     return { pass: true, message: () => 'Expected not to be running' };
+   *   }
+   * });
+   */
+  extend(matchers: Record<string, MatcherFunction>): void;
+}
+
+/**
+ * Create expect() matcher for terminal, command result, or custom value
  * 
  * @example
  * // Terminal 断言
@@ -380,15 +493,38 @@ function isTerminalAPI(value: unknown): value is TerminalAPI {
  * // CommandResult 断言（支持链式调用）
  * expect(result).toSucceed().toHaveStdout('hello');
  * expect(result).not.toContainInOutput('error');
+ * 
+ * @example
+ * // Custom matchers
+ * expect.extend({
+ *   async toBeRunning(received, timeout) {
+ *     return { pass: true, message: () => 'message' };
+ *   }
+ * });
+ * await expect(resource).toBeRunning();
  */
-export function expect(value: TerminalAPI): TerminalExpect;
-export function expect(value: CommandResult): CommandResultExpect;
-export function expect(value: TerminalAPI | CommandResult): TerminalExpect | CommandResultExpect {
+function expectImpl(value: TerminalAPI): TerminalExpect;
+function expectImpl(value: CommandResult): CommandResultExpect;
+function expectImpl<T>(value: T): GenericExpect<T>;
+function expectImpl<T>(value: T): TerminalExpect | CommandResultExpect | GenericExpect<T> {
   if (isTerminalAPI(value)) {
-    return new TerminalExpect(value);
+    return new TerminalExpect(value as unknown as TerminalAPI);
   }
   if (isCommandResult(value)) {
-    return new CommandResultExpect(value);
+    return new CommandResultExpect(value as unknown as CommandResult);
   }
-  throw new Error('expect() requires a TerminalAPI or CommandResult');
+  // Default: use GenericExpect for custom matchers
+  return new GenericExpect(value);
 }
+
+/**
+ * Main expect function with extend capability
+ */
+export const expect: ExpectWithExtend = Object.assign(expectImpl, {
+  /**
+   * Register custom matchers
+   */
+  extend(matchers: Record<string, MatcherFunction>): void {
+    Object.assign(customMatchers, matchers);
+  },
+});

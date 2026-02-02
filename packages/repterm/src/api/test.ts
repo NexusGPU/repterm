@@ -73,6 +73,25 @@ class TestRegistry {
   }
 
   /**
+   * Get only root-level suites for execution
+   * This returns file-level suites if present, otherwise suites without parents
+   */
+  getRootSuites(): TestSuite[] {
+    // If we have file suites, return only file-level suites
+    if (this.fileSuites.size > 0) {
+      return Array.from(this.fileSuites.values());
+    }
+
+    // No file suites - return default suite if it has content
+    if (this.defaultSuite.tests.length > 0 || (this.defaultSuite.suites && this.defaultSuite.suites.length > 0)) {
+      return [this.defaultSuite];
+    }
+
+    // Fallback: return suites without parents
+    return Array.from(this.suites.values()).filter(s => !s.parent);
+  }
+
+  /**
    * Get a specific suite by ID
    */
   getSuite(id: string): TestSuite | undefined {

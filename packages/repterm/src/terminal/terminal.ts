@@ -443,6 +443,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const tmuxSessionToClean = this.tmuxSessionName;  // 保存 session 名称
 
       if (this.recording && this.tmuxSessionName && this.session.isActive()) {
+        // 录制结束前等待 2 秒，让用户看到最后的输出
+        await this.sleep(2000);
         // 使用快捷键 Ctrl+B d 分离 tmux（detach）
         // 这会导致 tmux 退出，从而结束 asciinema 录制
         await this.sleep(300);
@@ -498,6 +500,27 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
+   * Get pane index (for tmux commands)
+   */
+  getPaneIndex(): number | undefined {
+    return this.paneIndex;
+  }
+
+  /**
+   * Get session output (for non-recording PTY mode)
+   */
+  getSessionOutput(): string {
+    return this.session.getOutput();
+  }
+
+  /**
+   * Get output length at current moment (for range capture)
+   */
+  getOutputLength(): number {
+    return this.session.getOutput().length;
+  }
+
+  /**
    * Type text with human-like delays (for recording mode)
    * Following simple-example.js pattern: 80ms base delay with ±30% randomization
    */
@@ -521,37 +544,47 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Wait for output to stabilize
-   * Waits for output to stop changing (consecutive stable checks)
+   * Wait for command to complete
+   * Uses prompt detection + output stable fallback
    */
   private async waitForOutputStable(timeout: number = 10000): Promise<void> {
     const startTime = Date.now();
-    let lastLength = this.session.getOutput().length;
+    const promptPattern = /[\$#%>]\s*$/;  // Common shell prompts
+    let lastOutput = '';
     let stableCount = 0;
-    const requiredStableChecks = 3; // Need 3 consecutive stable checks
-    const checkInterval = 100; // Check every 100ms
+    const requiredStableChecks = 3;
+    const checkInterval = 100;
 
     while (Date.now() - startTime < timeout) {
       await this.sleep(checkInterval);
 
-      const currentLength = this.session.getOutput().length;
+      // Get output from correct source based on mode
+      const output = this.recording
+        ? await this.capturePaneOutput()
+        : this.session.getOutput();
 
-      // Check if output is stable (length not changing)
-      if (currentLength === lastLength) {
+      // 1. Primary: Check for shell prompt (more reliable)
+      const trimmedOutput = output.trim();
+      if (trimmedOutput.length > 0) {
+        const lastLine = trimmedOutput.split('\n').pop() || '';
+        if (promptPattern.test(lastLine)) {
+          return;  // Prompt detected, command finished
+        }
+      }
+
+      // 2. Fallback: Output stable detection
+      if (output === lastOutput) {
         stableCount++;
-
-        // If output has been stable for required checks, we're done
         if (stableCount >= requiredStableChecks) {
           return;
         }
       } else {
-        // New data arrived, reset stable count
         stableCount = 0;
-        lastLength = currentLength;
+        lastOutput = output;
       }
     }
 
-    // Timeout is not an error in recording mode - just continue
+    // Timeout is not an error - just continue
   }
 
   /**
@@ -582,19 +615,57 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await this.selectPane();
       await this.sleep(300);
 
-      const shouldPaste = command.length > 50 || command.includes('\n');
-      if (shouldPaste) {
+      const hasNewline = command.includes('\n');
+
+      if (hasNewline && this.tmuxSessionName) {
+        // 多行命令：使用 Bracketed Paste Mode 避免续行提示符
+        await this.pasteWithTmux(command);
+      } else if (command.length > 50) {
+        // 长命令但无换行：快速写入
         this.session.write(command);
         await this.sleep(100);
+        this.session.write('\r');
       } else {
+        // 短命令：人工打字效果
         await this.typeWithDelay(command);
+        this.session.write('\r');
       }
-      this.session.write('\r');
     } else {
       this.session.write(command + '\n');
     }
 
     await this.sleep(50);
+  }
+
+  /**
+   * 使用 Bracketed Paste Mode 粘贴多行命令
+   * 避免 shell 显示续行提示符（如 quote>、pipe heredoc>）
+   * 
+   * Bracketed Paste Mode 使用转义序列包裹粘贴内容：
+   * - \x1b[200~ 标记粘贴开始
+   * - \x1b[201~ 标记粘贴结束
+   * Shell 会将整个内容作为单个输入块处理，不显示续行提示符
+   */
+  private async pasteWithTmux(command: string): Promise<void> {
+    const paneTarget = `${this.tmuxSessionName}:0.${this.paneIndex}`;
+
+    // Bracketed Paste Mode 转义序列
+    const PASTE_START = '\x1b[200~';  // ESC [ 200 ~
+    const PASTE_END = '\x1b[201~';    // ESC [ 201 ~
+
+    // 包裹命令内容（不包含最后的回车，回车在粘贴结束后单独发送）
+    const wrappedContent = PASTE_START + command + PASTE_END;
+
+    // 使用 tmux send-keys -l 发送字面内容（包含转义序列）
+    await Bun.spawn(['tmux', 'send-keys', '-l', '-t', paneTarget, wrappedContent]).exited;
+
+    // 等待 shell 处理
+    await this.sleep(500);
+
+    // 发送回车执行命令
+    await Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'Enter']).exited;
+
+    await this.sleep(200);
   }
 }
 
@@ -616,6 +687,10 @@ class PTYProcessImpl implements PTYProcess {
   // 用于非录制、非交互模式的 Bun.spawn 进程
   private bunProcess?: ReturnType<typeof Bun.spawn>;
   private isInteractive: boolean;
+  // 用于 PTY 模式的历史行数记录（范围捕获）
+  private beforeHistorySize: number = 0;
+  // 用于非录制交互模式的输出起始位置
+  private beforeOutputLength: number = 0;
 
   constructor(terminal: Terminal, command: string, options: RunOptions = {}) {
     this.terminal = terminal;
@@ -658,9 +733,66 @@ class PTYProcessImpl implements PTYProcess {
 
   /**
    * 判断是否使用 PTY 模式（录制或交互）
+   * silent 模式强制使用 Bun.spawn 获取干净输出
    */
   private usePtyMode(): boolean {
+    if (this.options.silent) {
+      return false;
+    }
     return this.terminal.isRecording() || this.isInteractive;
+  }
+
+  /**
+   * 获取当前 pane 的 scrollback 历史行数
+   */
+  private async getHistorySize(): Promise<number> {
+    if (!this.terminal.isRecording()) return 0;
+
+    const tmuxSession = this.terminal.getTmuxSessionName();
+    const paneIndex = this.terminal.getPaneIndex();
+    if (!tmuxSession || paneIndex === undefined) return 0;
+
+    try {
+      const proc = Bun.spawn(['tmux', 'display-message', '-t', `${tmuxSession}:0.${paneIndex}`, '-p', '#{history_size}'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      return parseInt(stdout.trim(), 10) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * 从指定行开始捕获 pane 输出
+   */
+  private async capturePaneFrom(startLine: number): Promise<string> {
+    const tmuxSession = this.terminal.getTmuxSessionName();
+    const paneIndex = this.terminal.getPaneIndex();
+    if (!tmuxSession || paneIndex === undefined) return '';
+
+    try {
+      // -S startLine 表示从该行开始捕获
+      const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`, '-S', String(startLine)], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      return this.stripAnsi(stdout);
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * 去除 ANSI 转义序列
+   */
+  private stripAnsi(text: string): string {
+    const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
+    return text.replace(ansiRegex, '');
   }
 
   /**
@@ -674,6 +806,13 @@ class PTYProcessImpl implements PTYProcess {
 
     if (this.usePtyMode()) {
       // 录制模式或交互式：使用 PTY
+      if (this.terminal.isRecording()) {
+        // 录制模式：记录执行前的历史行数，用于后续范围捕获
+        this.beforeHistorySize = await this.getHistorySize();
+      } else {
+        // 非录制交互模式：记录当前输出长度
+        this.beforeOutputLength = this.terminal.getOutputLength();
+      }
       await this.terminal.executeInPty(this.command);
     } else {
       // 非录制、非交互：使用 Bun.spawn
@@ -743,7 +882,16 @@ class PTYProcessImpl implements PTYProcess {
       // PTY 模式：等待输出稳定
       await this.terminal.waitForOutputStablePublic(timeout);
 
-      const output = await this.terminal.snapshot();
+      let output: string;
+      if (this.terminal.isRecording()) {
+        // 录制模式：使用 tmux capture-pane 范围捕获
+        output = await this.capturePaneFrom(this.beforeHistorySize);
+      } else {
+        // 非录制交互模式：使用 session buffer
+        const fullOutput = this.terminal.getSessionOutput();
+        output = this.stripAnsi(fullOutput.substring(this.beforeOutputLength));
+      }
+
       return new CommandResultImpl({
         code: -1, // PTY 模式无法可靠获取退出码，设为 -1 表示不可用
         stdout: output,
