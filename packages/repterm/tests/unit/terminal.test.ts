@@ -109,6 +109,39 @@ describe('createTerminal', () => {
     });
 });
 
+describe('PTY-only mode', () => {
+    let terminal: Terminal | null = null;
+
+    afterEach(async () => {
+        if (terminal) {
+            await terminal.close();
+            terminal = null;
+        }
+    });
+
+    test('creates terminal with ptyOnly config', () => {
+        terminal = new Terminal({ ptyOnly: true });
+        expect(terminal).toBeInstanceOf(Terminal);
+        expect(terminal.isPtyMode()).toBe(true);
+        expect(terminal.isRecording()).toBe(false);
+    });
+
+    test('isPtyMode() returns true for ptyOnly', () => {
+        terminal = createTerminal({ ptyOnly: true });
+        expect(terminal.isPtyMode()).toBe(true);
+    });
+
+    test('isPtyMode() returns true for recording', () => {
+        terminal = createTerminal({ recording: true });
+        expect(terminal.isPtyMode()).toBe(true);
+    });
+
+    test('isPtyMode() returns false for plain terminal', () => {
+        terminal = createTerminal();
+        expect(terminal.isPtyMode()).toBe(false);
+    });
+});
+
 describe('run() with CommandResult', () => {
     let terminal: Terminal | null = null;
 
@@ -181,4 +214,59 @@ describe('run() with CommandResult', () => {
         expect(result.output).toContain('stdout');
         expect(result.output).toContain('stderr');
     }, 15000);
+});
+
+describe('analyzePromptLine', () => {
+    test('detects traditional prompt at line end', () => {
+        const terminal = new Terminal();
+        // 使用类型断言访问私有方法
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        const pattern = analyze('user@host:~$ ');
+        expect(pattern).toBeDefined();
+        expect(pattern.test('user@host:~$ ')).toBe(true);
+    });
+
+    test('detects right-side prompt (Starship style)', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // 右侧提示符：❯ 后有多个空格再有时间
+        const line = '  ~/path on main ❯                     at  18:44:46';
+        const pattern = analyze(line);
+        expect(pattern).toBeDefined();
+        expect(pattern.test(line)).toBe(true);
+    });
+
+    test('returns undefined for line without prompt char', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        const pattern = analyze('just some text');
+        expect(pattern).toBeUndefined();
+    });
+
+    test('handles empty input', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        expect(analyze('')).toBeUndefined();
+        expect(analyze('\n\n')).toBeUndefined();
+    });
+
+    test('detects hash prompt for root user', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        const pattern = analyze('root@server:/# ');
+        expect(pattern).toBeDefined();
+        expect(pattern.test('root@server:/# ')).toBe(true);
+    });
+});
+
+describe('getDetectedPromptPattern', () => {
+    test('returns undefined before detection', () => {
+        const terminal = new Terminal();
+        expect(terminal.getDetectedPromptPattern()).toBeUndefined();
+    });
 });

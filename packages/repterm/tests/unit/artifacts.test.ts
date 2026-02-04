@@ -123,7 +123,7 @@ describe('createArtifactManager', () => {
 
     test('uses default base dir when not specified', () => {
         const manager = createArtifactManager();
-        expect(manager.getBaseDir()).toBe('./artifacts');
+        expect(manager.getBaseDir()).toBe('/tmp/repterm');
     });
 });
 

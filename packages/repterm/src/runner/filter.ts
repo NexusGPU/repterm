@@ -7,11 +7,11 @@ import type { TestCase, TestSuite } from './models.js';
 
 /**
  * 判断测试是否应该在当前模式下运行
- * 
+ *
  * 运行策略：
- * - recordMode = false（普通模式）：运行未标注 record: true 的测试
+ * - recordMode = false（普通模式）：运行所有测试（包括 record: true 的测试）
  * - recordMode = true（录制模式）：只运行标注了 record: true 的测试
- * 
+ *
  * @param testCase 测试用例
  * @param suite 测试套件
  * @param recordMode 是否为录制模式（--record）
@@ -23,16 +23,14 @@ export function shouldRunTest(
 ): boolean {
   // 确定测试的 record 配置：test > suite > undefined
   const testRecordConfig = testCase.options?.record ?? getInheritedRecordConfig(suite);
-  
-  // 如果测试没有标注 record 配置（undefined 或 false）
-  if (testRecordConfig === undefined || testRecordConfig === false) {
-    // 未标注或标注为 false 的测试只在非录制模式下运行
-    return !recordMode;
+
+  // 普通模式下运行所有测试
+  if (!recordMode) {
+    return true;
   }
-  
-  // 测试标注了 record: true
-  // 只在录制模式下运行
-  return recordMode;
+
+  // 录制模式下只运行标注了 record: true 的测试
+  return testRecordConfig === true;
 }
 
 /**

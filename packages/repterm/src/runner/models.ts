@@ -116,6 +116,9 @@ export interface PTYProcess extends PromiseLike<CommandResult> {
   /** 等待命令完成并返回结果 */
   wait(options?: { timeout?: number }): Promise<CommandResult>;
 
+  /** 启动命令执行，等待输入完成（不等待命令执行完成） */
+  start(): Promise<void>;
+
   /** 发送 Ctrl+C */
   interrupt(): Promise<void>;
 
@@ -153,6 +156,38 @@ export interface RunOptions {
    * 注意：此模式下命令不会在录制中显示
    */
   silent?: boolean;
+
+  /**
+   * 录制模式：打字速度 (ms/字符)
+   * 默认值：80ms，设为 0 则直接写入不打字
+   */
+  typingSpeed?: number;
+
+  /**
+   * 录制模式：命令执行后暂停时间 (ms)
+   * 用于让观众有时间阅读输出
+   */
+  pauseAfter?: number;
+
+  /**
+   * 录制模式：命令执行前暂停时间 (ms)
+   */
+  pauseBefore?: number;
+}
+
+/**
+ * 插件工厂类型 - 用于为新终端创建插件实例
+ */
+export type PluginFactory<TPlugins = Record<string, unknown>> = (
+  terminal: TerminalAPI
+) => TPlugins;
+
+/**
+ * 带插件的终端接口
+ */
+export interface TerminalWithPlugins<TPlugins = Record<string, unknown>> extends TerminalAPI {
+  /** 插件实例（与主终端相同配置） */
+  plugins: TPlugins;
 }
 
 export interface TerminalAPI {
@@ -186,11 +221,23 @@ export interface TerminalAPI {
   /** 关闭终端 */
   close(): Promise<void>;
 
-  /** 创建新的终端实例（多终端测试） */
-  create(): Promise<TerminalAPI>;
+  /** 
+   * 创建新的终端实例（多终端测试）
+   * 如果设置了插件工厂，返回的终端会自动携带 plugins 属性
+   */
+  create<TPlugins = Record<string, unknown>>(): Promise<TerminalWithPlugins<TPlugins>>;
 
   /** 检查是否处于录制模式 */
   isRecording?(): boolean;
+
+  /** 检查是否处于 PTY 模式（包括录制模式和 ptyOnly 模式） */
+  isPtyMode?(): boolean;
+
+  /** 
+   * 设置插件工厂（用于 create() 自动注入插件）
+   * @internal 由插件系统调用
+   */
+  setPluginFactory?<TPlugins>(factory: PluginFactory<TPlugins>): void;
 }
 
 export interface WaitOptions {
