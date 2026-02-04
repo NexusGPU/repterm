@@ -7,6 +7,15 @@
  */
 
 import { definePlugin, type BasePluginContext, type PluginHooks } from 'repterm';
+import {
+    KubectlResult,
+    ApplyResult,
+    DeleteResult,
+    PatchResult,
+    ScaleResult,
+    LabelResult,
+    WaitResult,
+} from './result.js';
 
 /**
  * Kubectl context extension
@@ -183,6 +192,48 @@ export interface DeleteOptions {
 }
 
 /**
+ * Options for kubectl get command
+ */
+export interface GetOptions {
+    /** Label selector (-l) */
+    selector?: string;
+    /** Field selector (--field-selector) */
+    fieldSelector?: string;
+    /** Get resources from all namespaces (-A) */
+    allNamespaces?: boolean;
+    /** jq filter expression to filter JSON output */
+    jqFilter?: string;
+    /** Enable watch mode (-w) - returns WatchProcess instead of data */
+    watch?: boolean;
+    /** Output format for watch mode (wide, name, custom-columns, etc.) */
+    output?: string;
+}
+
+/**
+ * Watch 进程控制器
+ */
+export interface WatchProcess {
+    /** 中断 watch 进程 (发送 Ctrl+C) */
+    interrupt: () => Promise<void>;
+}
+
+/**
+ * Cluster information returned by clusterInfo
+ */
+export interface ClusterInfo {
+    /** Whether the cluster is reachable */
+    reachable: boolean;
+    /** Kubernetes control plane URL */
+    controlPlane?: string;
+    /** CoreDNS service URL */
+    coreDNS?: string;
+    /** Server version */
+    serverVersion?: string;
+    /** Error message if cluster is not reachable */
+    error?: string;
+}
+
+/**
  * Kubectl plugin methods
  */
 export interface KubectlMethods {
@@ -197,11 +248,16 @@ export interface KubectlMethods {
         timeout?: number
     ) => Promise<void>;
     /** Create a resource from a YAML string */
-    apply: (yaml: string) => Promise<void>;
+    apply: (yaml: string) => Promise<ApplyResult>;
     /** Delete a resource */
-    delete: (resource: string, name: string, options?: DeleteOptions) => Promise<void>;
-    /** Get resource as JSON */
-    get: <T = unknown>(resource: string, name?: string) => Promise<T>;
+    delete: (resource: string, name: string, options?: DeleteOptions) => Promise<DeleteResult>;
+    /** Get resource as JSON, supports label selector and other options */
+    get: {
+        <T = unknown>(resource: string, name?: string, options?: GetOptions & { watch?: false | undefined }): Promise<T>;
+        (resource: string, name: string | undefined, options: GetOptions & { watch: true }): Promise<WatchProcess>;
+    };
+    /** Get a specific field value using JSONPath expression */
+    getJsonPath: <T = string>(resource: string, name: string, jsonPath: string, options?: GetOptions) => Promise<T | undefined>;
     /** Check if a resource exists */
     exists: (resource: string, name: string) => Promise<boolean>;
     /** Set the current namespace */
@@ -210,6 +266,8 @@ export interface KubectlMethods {
     getNamespace: () => string;
     /** Get the kubeconfig path */
     getKubeconfig: () => string | undefined;
+    /** Get cluster connection info */
+    clusterInfo: () => Promise<ClusterInfo>;
 
     // ===== New Core APIs =====
 
@@ -220,25 +278,33 @@ export interface KubectlMethods {
     /** Get detailed resource description */
     describe: (resource: string, name?: string) => Promise<string>;
     /** Wait for a condition on a resource */
-    wait: (resource: string, name: string, condition: string, options?: WaitOptions) => Promise<void>;
+    wait: (resource: string, name: string, condition: string, options?: WaitOptions) => Promise<WaitResult>;
+    /** Wait for a JSONPath field to have a specific value */
+    waitForJsonPath: (
+        resource: string,
+        name: string,
+        jsonPath: string,
+        value: string,
+        timeout?: number
+    ) => Promise<void>;
     /** Wait for resource to have specific replica count */
     waitForReplicas: (resource: string, name: string, count: number, timeout?: number) => Promise<void>;
 
     // ===== Resource Management APIs =====
 
     /** Scale a resource (Deployment, ReplicaSet, StatefulSet) */
-    scale: (resource: string, name: string, replicas: number) => Promise<void>;
+    scale: (resource: string, name: string, replicas: number) => Promise<ScaleResult>;
     /** Patch a resource */
     patch: (
         resource: string,
         name: string,
         patch: object | string,
         type?: 'strategic' | 'merge' | 'json'
-    ) => Promise<void>;
+    ) => Promise<PatchResult>;
     /** Add or update labels on a resource */
-    label: (resource: string, name: string, labels: Record<string, string | null>) => Promise<void>;
+    label: (resource: string, name: string, labels: Record<string, string | null>) => Promise<LabelResult>;
     /** Add or update annotations on a resource */
-    annotate: (resource: string, name: string, annotations: Record<string, string | null>) => Promise<void>;
+    annotate: (resource: string, name: string, annotations: Record<string, string | null>) => Promise<LabelResult>;
 
     // ===== Rollout Management =====
 
@@ -330,42 +396,157 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                     await testContext.terminal.run(cmd);
                 },
 
-                apply: async (yaml: string) => {
+                apply: async (yaml: string): Promise<ApplyResult> => {
                     // 使用 heredoc 语法避免录制时出现 quote> 提示符
                     const cmd = `cat <<'EOF' | kubectl -n ${currentNamespace} apply -f -
 ${yaml.trim()}
 EOF`;
-                    await testContext.terminal.run(`${cmd}`);
+                    const result = await testContext.terminal.run(`${cmd}`);
+                    return new ApplyResult(result.output, cmd, result.code);
                 },
 
-                delete: async (resource: string, name: string, options?: DeleteOptions) => {
+                delete: async (resource: string, name: string, options?: DeleteOptions): Promise<DeleteResult> => {
                     let args = `delete ${resource} ${name} --ignore-not-found`;
                     if (options?.force) {
                         args += ' --grace-period=0 --force';
                     }
-                    await testContext.terminal.run(
-                        `${buildCommand(args)}`,
+                    const cmd = buildCommand(args);
+                    const result = await testContext.terminal.run(
+                        cmd,
                         { timeout: options?.force ? 10000 : 60000 }
                     );
+                    return new DeleteResult(result.output, cmd, result.code);
                 },
 
-                get: async <T = unknown>(resource: string, name?: string): Promise<T> => {
-                    const args = name ? `get ${resource} ${name} -o json` : `get ${resource} -o json`;
+                get: ((resource: string, name?: string, options?: GetOptions): any => {
+                    // Watch 模式：启动持续 watch，返回 Promise<WatchProcess>
+                    if (options?.watch) {
+                        let args = name ? `get ${resource} ${name} -w` : `get ${resource} -w`;
+                        if (options.selector) {
+                            args += ` -l ${options.selector}`;
+                        }
+                        if (options.fieldSelector) {
+                            args += ` --field-selector=${options.fieldSelector}`;
+                        }
+                        if (options.allNamespaces) {
+                            args += ' -A';
+                        }
+                        if (options.output) {
+                            args += ` -o ${options.output}`;
+                        }
+
+                        const cmd = buildCommand(args);
+                        const proc = testContext.terminal.run(cmd);
+
+                        // ★ 修复：返回 Promise，等待命令输入完成后再返回
+                        // 调用方必须 await，确保 stepTitle 和命令输入完成
+                        return (async (): Promise<WatchProcess> => {
+                            await proc.start();  // 等待输入完成
+                            return {
+                                interrupt: async () => {
+                                    await proc.interrupt();
+                                }
+                            };
+                        })();
+                    }
+
+                    // 普通模式：获取 JSON 数据
+                    return (async () => {
+                        let args = name ? `get ${resource} ${name}` : `get ${resource}`;
+                        if (options?.selector) {
+                            args += ` -l ${options.selector}`;
+                        }
+                        if (options?.fieldSelector) {
+                            args += ` --field-selector=${options.fieldSelector}`;
+                        }
+                        if (options?.allNamespaces) {
+                            args += ' -A';
+                        }
+                        args += ' -o json';
+
+                        // Build full command with optional jq filter
+                        let fullCmd = buildCommand(args);
+                        if (options?.jqFilter) {
+                            fullCmd += ` | jq '${options.jqFilter}'`;
+                        }
+
+                        const result = await testContext.terminal.run(fullCmd);
+
+                        let stdout: string;
+                        if (testContext.terminal.isPtyMode?.()) {
+                            const silentResult = await testContext.terminal.run(fullCmd, { silent: true });
+                            stdout = silentResult.stdout;
+                        } else {
+                            stdout = result.stdout;
+                        }
+
+                        // Check for kubectl errors before parsing JSON
+                        const trimmed = stdout.trim();
+                        if (trimmed.startsWith('error:') || trimmed.startsWith('Error') ||
+                            trimmed.includes('Error from server') || trimmed.includes('not found')) {
+                            throw new Error(`kubectl get failed: ${trimmed}`);
+                        }
+
+                        try {
+                            return JSON.parse(trimmed);
+                        } catch {
+                            return trimmed;
+                        }
+                    })();
+                }) as KubectlMethods['get'],
+
+                getJsonPath: async <T = string>(
+                    resource: string,
+                    name: string,
+                    jsonPath: string,
+                    options?: GetOptions
+                ): Promise<T | undefined> => {
+                    let args = `get ${resource} ${name}`;
+                    if (options?.selector) {
+                        args += ` -l ${options.selector}`;
+                    }
+                    if (options?.fieldSelector) {
+                        args += ` --field-selector=${options.fieldSelector}`;
+                    }
+                    if (options?.allNamespaces) {
+                        args += ' -A';
+                    }
+                    // Ensure jsonPath is properly quoted
+                    const escapedPath = jsonPath.startsWith('{') ? jsonPath : `{${jsonPath}}`;
+                    args += ` -o jsonpath='${escapedPath}'`;
                     const cmd = buildCommand(args);
                     const result = await testContext.terminal.run(cmd);
-                    if (testContext.terminal.isRecording?.()) {
-                        const silentResult = await testContext.terminal.run(cmd, { silent: true });
-                        return JSON.parse(silentResult.stdout) as T;
+                    const output = testContext.terminal.isPtyMode?.()
+                        ? (await testContext.terminal.run(cmd, { silent: true })).stdout
+                        : result.stdout;
+
+                    const trimmed = output.trim();
+
+                    // Handle empty/null values
+                    if (trimmed === '' || trimmed === '<none>' || trimmed === '<nil>') {
+                        return undefined;
                     }
-                    return JSON.parse(result.stdout) as T;
+
+                    // Try to parse as JSON (numbers, booleans, etc.), otherwise return as string
+                    try {
+                        return JSON.parse(trimmed) as T;
+                    } catch {
+                        return trimmed as T;
+                    }
                 },
 
                 exists: async (resource: string, name: string): Promise<boolean> => {
                     try {
                         const cmd = buildCommand(`get ${resource} ${name} -o name`);
                         const result = await testContext.terminal.run(`${cmd}`);
+                        // 在 PTY 模式下，使用 silent 执行获取干净输出
+                        let stdout = result.stdout;
+                        if (testContext.terminal.isPtyMode?.()) {
+                            const silentResult = await testContext.terminal.run(cmd, { silent: true });
+                            stdout = silentResult.stdout;
+                        }
                         // 兼容两种格式：deployment/name 和 deployment.apps/name
-                        return result.output.includes(`/${name}`);
+                        return stdout.includes(`/${name}`);
                     } catch {
                         return false;
                     }
@@ -378,6 +559,52 @@ EOF`;
                 getNamespace: () => currentNamespace,
 
                 getKubeconfig: () => kubeconfig,
+
+                clusterInfo: async (): Promise<ClusterInfo> => {
+                    try {
+                        // Run cluster-info command
+                        let kubectlCmd = 'kubectl';
+                        if (kubeconfig) {
+                            kubectlCmd += ` --kubeconfig=${kubeconfig}`;
+                        }
+                        const result = await testContext.terminal.run(`${kubectlCmd} cluster-info`);
+                        const output = result.output;
+
+                        // Parse control plane URL
+                        const controlPlaneMatch = output.match(/Kubernetes (?:control plane|master) is running at (https?:\/\/[^\s]+)/);
+                        const coreDNSMatch = output.match(/CoreDNS is running at (https?:\/\/[^\s]+)/);
+
+                        // Get server version
+                        let serverVersion: string | undefined;
+                        try {
+                            const versionResult = await testContext.terminal.run(`${kubectlCmd} version --short 2>/dev/null || ${kubectlCmd} version -o json`, { silent: true });
+                            const versionOutput = versionResult.stdout;
+                            // Try to parse JSON format
+                            try {
+                                const versionJson = JSON.parse(versionOutput);
+                                serverVersion = versionJson.serverVersion?.gitVersion;
+                            } catch {
+                                // Try short format: Server Version: v1.28.0
+                                const versionMatch = versionOutput.match(/Server Version:\s*(v[\d.]+)/);
+                                serverVersion = versionMatch?.[1];
+                            }
+                        } catch {
+                            // Ignore version fetch errors
+                        }
+
+                        return {
+                            reachable: true,
+                            controlPlane: controlPlaneMatch?.[1],
+                            coreDNS: coreDNSMatch?.[1],
+                            serverVersion,
+                        };
+                    } catch (e) {
+                        return {
+                            reachable: false,
+                            error: e instanceof Error ? e.message : String(e),
+                        };
+                    }
+                },
 
                 // ===== New Core APIs =====
 
@@ -404,15 +631,34 @@ EOF`;
                     return executeCommand(args);
                 },
 
-                wait: async (resource: string, name: string, condition: string, options?: WaitOptions) => {
-                    const timeoutMs = options?.timeout ?? 60000;
+                wait: async (resource: string, name: string, condition: string, options?: WaitOptions): Promise<WaitResult> => {
+                    const timeoutMs = options?.timeout ?? 20000;
                     const timeoutSec = Math.ceil(timeoutMs / 1000);
 
+                    let cmd: string;
                     if (options?.forDelete) {
-                        await executeCommand(`wait ${resource}/${name} --for=delete --timeout=${timeoutSec}s`);
+                        cmd = buildCommand(`wait ${resource}/${name} --for=delete --timeout=${timeoutSec}s`);
                     } else {
-                        await executeCommand(`wait ${resource}/${name} --for=condition=${condition} --timeout=${timeoutSec}s`);
+                        cmd = buildCommand(`wait ${resource}/${name} --for=condition=${condition} --timeout=${timeoutSec}s`);
                     }
+
+                    const result = await testContext.terminal.run(cmd);
+                    return new WaitResult(result.output, cmd, result.code);
+                },
+
+                waitForJsonPath: async (
+                    resource: string,
+                    name: string,
+                    jsonPath: string,
+                    value: string,
+                    timeout = 60000
+                ) => {
+                    const timeoutSec = Math.ceil(timeout / 1000);
+                    // Ensure jsonPath is properly formatted for kubectl wait
+                    const formattedPath = jsonPath.startsWith('{') ? jsonPath : `{${jsonPath}}`;
+                    await executeCommand(
+                        `wait ${resource}/${name} --for=jsonpath='${formattedPath}'=${value} --timeout=${timeoutSec}s`
+                    );
                 },
 
                 waitForReplicas: async (resource: string, name: string, count: number, timeout = 60000) => {
@@ -436,8 +682,10 @@ EOF`;
 
                 // ===== Resource Management APIs =====
 
-                scale: async (resource: string, name: string, replicas: number) => {
-                    await executeCommand(`scale ${resource}/${name} --replicas=${replicas}`);
+                scale: async (resource: string, name: string, replicas: number): Promise<ScaleResult> => {
+                    const cmd = buildCommand(`scale ${resource}/${name} --replicas=${replicas}`);
+                    const result = await testContext.terminal.run(cmd);
+                    return new ScaleResult(result.output, cmd, result.code);
                 },
 
                 patch: async (
@@ -445,24 +693,30 @@ EOF`;
                     name: string,
                     patch: object | string,
                     type: 'strategic' | 'merge' | 'json' = 'strategic'
-                ) => {
+                ): Promise<PatchResult> => {
                     const patchStr = typeof patch === 'string' ? patch : JSON.stringify(patch);
                     const escapedPatch = patchStr.replace(/'/g, "'\\''");
-                    await executeCommand(`patch ${resource} ${name} --type=${type} -p '${escapedPatch}'`);
+                    const cmd = buildCommand(`patch ${resource} ${name} --type=${type} -p '${escapedPatch}'`);
+                    const result = await testContext.terminal.run(cmd);
+                    return new PatchResult(result.output, cmd, result.code);
                 },
 
-                label: async (resource: string, name: string, labels: Record<string, string | null>) => {
+                label: async (resource: string, name: string, labels: Record<string, string | null>): Promise<LabelResult> => {
                     const labelArgs = Object.entries(labels)
                         .map(([key, value]) => (value === null ? `${key}-` : `${key}=${value}`))
                         .join(' ');
-                    await executeCommand(`label ${resource} ${name} ${labelArgs} --overwrite`);
+                    const cmd = buildCommand(`label ${resource} ${name} ${labelArgs} --overwrite`);
+                    const result = await testContext.terminal.run(cmd);
+                    return new LabelResult(result.output, cmd, result.code);
                 },
 
-                annotate: async (resource: string, name: string, annotations: Record<string, string | null>) => {
+                annotate: async (resource: string, name: string, annotations: Record<string, string | null>): Promise<LabelResult> => {
                     const annotationArgs = Object.entries(annotations)
                         .map(([key, value]) => (value === null ? `${key}-` : `${key}=${value}`))
                         .join(' ');
-                    await executeCommand(`annotate ${resource} ${name} ${annotationArgs} --overwrite`);
+                    const cmd = buildCommand(`annotate ${resource} ${name} ${annotationArgs} --overwrite`);
+                    const result = await testContext.terminal.run(cmd);
+                    return new LabelResult(result.output, cmd, result.code);
                 },
 
                 // ===== Rollout Management =====
@@ -614,7 +868,7 @@ EOF`;
                     try {
                         const result = await testContext.terminal.run(cmd);
                         let stdout = result.stdout;
-                        if (testContext.terminal.isRecording?.()) {
+                        if (testContext.terminal.isPtyMode?.()) {
                             const silentResult = await testContext.terminal.run(cmd, { silent: true });
                             stdout = silentResult.stdout;
                         }
@@ -654,7 +908,7 @@ EOF`;
                     try {
                         const result = await testContext.terminal.run(cmd);
                         let stdout = result.stdout;
-                        if (testContext.terminal.isRecording?.()) {
+                        if (testContext.terminal.isPtyMode?.()) {
                             const silentResult = await testContext.terminal.run(cmd, { silent: true });
                             stdout = silentResult.stdout;
                         }
@@ -745,5 +999,21 @@ export {
     configmap,
     secret,
     resource,
+    // Tensor Fusion CRD wrappers
+    gpupool,
+    gpu,
+    tensorfusionworkload,
+    tensorfusionconnection,
+    crd,
     registerK8sMatchers,
 } from './matchers.js';
+
+// Re-export result types
+export {
+    KubectlResult,
+    ApplyResult,
+    DeleteResult,
+    PatchResult,
+    ScaleResult,
+    LabelResult,
+} from './result.js';

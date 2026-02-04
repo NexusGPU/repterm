@@ -52,6 +52,16 @@ export function createTestWithPlugins<TPlugins extends readonly AnyPlugin[]>(
         fn: PluginTestFunction<TPlugins>
     ): void {
         baseTest(name, async ({ terminal }) => {
+            // Create plugin factory for new terminals
+            const pluginFactory = (newTerminal: typeof terminal) => {
+                // Initialize plugins with new terminal context
+                const newCtx = config.initialize({ terminal: newTerminal });
+                return newCtx.plugins;
+            };
+
+            // Inject plugin factory into terminal
+            terminal.setPluginFactory?.(pluginFactory);
+
             // Initialize plugins with test context
             const augmentedCtx = config.initialize({ terminal });
 

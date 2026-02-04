@@ -8,23 +8,24 @@
 export { test, getTests, clearTests, registry } from './api/test.js';
 export {
   expect,
-  TerminalExpect,
-  CommandResultExpect,
-  GenericExpect,
   AssertionError,
   type MatcherResult,
-  type MatcherContext,
-  type MatcherFunction,
-  type ExpectWithExtend,
 } from './api/expect.js';
 
 // Test organization features
 export { describe } from './api/describe.js';
-export { step } from './api/steps.js';
+export {
+  step,
+  getCurrentStepOptions,
+  getCurrentStepName,
+  shouldShowStepTitle,
+  markStepTitleShown,
+  type StepRecordingOptions
+} from './api/steps.js';
 export { beforeEach, afterEach, beforeAll, afterAll } from './api/hooks.js';
 
 // Re-export types for user convenience
-export type { TestContext, TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, NamedHookEntry } from './runner/models.js';
+export type { TestContext, TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, NamedHookEntry, PluginFactory, TerminalWithPlugins } from './runner/models.js';
 export type { TestFunction, TestOptions, DescribeOptions } from './runner/models.js';
 export type { HookFunction, EnhancedHookFunction } from './api/hooks.js';
 

@@ -9,36 +9,42 @@
 
 import { expect, type MatcherResult } from 'repterm';
 import type { KubectlMethods } from './index.js';
+import { KubectlResult } from './result.js';
 
 // ===== Module Augmentation for K8s Matchers =====
 
 /**
- * Augment GenericExpect to include K8s matcher methods.
+ * Augment bun:test Matchers to include K8s matcher methods.
  * This provides TypeScript type information for dynamically added matchers.
- * 
- * Note: We augment with K8sResource constraint to ensure proper typing
  */
-declare module 'repterm' {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    interface GenericExpect<T> {
+declare module 'bun:test' {
+    interface Matchers<T> {
+        /** Assert that a kubectl operation succeeded */
+        toBeSuccessful(): Promise<void>;
         /** Assert that a resource exists in the cluster */
-        toExistInCluster(): Promise<this>;
+        toExistInCluster(): Promise<void>;
+        /** Assert that a resource does not exist in the cluster */
+        toNotExistInCluster(): Promise<void>;
         /** Assert that a Pod is in Running state */
-        toBeRunning(timeout?: number): Promise<this>;
+        toBeRunning(timeout?: number): Promise<void>;
         /** Assert that a Pod has a specific phase */
-        toHavePhase(phase: string): Promise<this>;
+        toHavePhase(phase: string): Promise<void>;
         /** Assert that a resource has a specific number of replicas */
-        toHaveReplicas(count: number): Promise<this>;
+        toHaveReplicas(count: number): Promise<void>;
+        /** Assert that a resource has a specific number of ready replicas */
+        toHaveReadyReplicas(count: number): Promise<void>;
         /** Assert that a resource has a specific number of available replicas */
-        toHaveAvailableReplicas(count: number): Promise<this>;
+        toHaveAvailableReplicas(count: number): Promise<void>;
         /** Assert that a Deployment is available */
-        toBeAvailable(): Promise<this>;
+        toBeAvailable(): Promise<void>;
         /** Assert that a resource has a specific label */
-        toHaveLabel(key: string, value?: string): Promise<this>;
+        toHaveLabel(key: string, value?: string): Promise<void>;
         /** Assert that a resource has a specific annotation */
-        toHaveAnnotation(key: string, value?: string): Promise<this>;
+        toHaveAnnotation(key: string, value?: string): Promise<void>;
         /** Assert that a resource has a specific condition */
-        toHaveCondition(type: string, status: 'True' | 'False' | 'Unknown'): Promise<this>;
+        toHaveCondition(type: string, status: 'True' | 'False' | 'Unknown'): Promise<void>;
+        /** Assert that a resource has a specific status field value (supports dot notation for nested paths) */
+        toHaveStatusField(path: string, value: unknown): Promise<void>;
     }
 }
 
@@ -114,10 +120,54 @@ export function resource(kubectl: KubectlMethods, kind: string, name: string): K
     return new K8sResource(kubectl, kind, name);
 }
 
+// ===== Tensor Fusion CRD Wrappers =====
+
+/**
+ * Create a GPUPool resource wrapper (Tensor Fusion CRD)
+ */
+export function gpupool(kubectl: KubectlMethods, name: string): K8sResource {
+    return new K8sResource(kubectl, 'gpupool', name);
+}
+
+/**
+ * Create a GPU resource wrapper (Tensor Fusion CRD)
+ */
+export function gpu(kubectl: KubectlMethods, name: string): K8sResource {
+    return new K8sResource(kubectl, 'gpu', name);
+}
+
+/**
+ * Create a TensorFusionWorkload resource wrapper (Tensor Fusion CRD)
+ */
+export function tensorfusionworkload(kubectl: KubectlMethods, name: string): K8sResource {
+    return new K8sResource(kubectl, 'tensorfusionworkload', name);
+}
+
+/**
+ * Create a TensorFusionConnection resource wrapper (Tensor Fusion CRD)
+ */
+export function tensorfusionconnection(kubectl: KubectlMethods, name: string): K8sResource {
+    return new K8sResource(kubectl, 'tensorfusionconnection', name);
+}
+
+/**
+ * Create a custom CRD resource wrapper with explicit API group
+ * @param kubectl - kubectl methods instance
+ * @param kind - Resource kind (e.g., 'gpupool.tensor-fusion.ai')
+ * @param name - Resource name
+ */
+export function crd(kubectl: KubectlMethods, kind: string, name: string): K8sResource {
+    return new K8sResource(kubectl, kind, name);
+}
+
 // ===== Type Guard =====
 
 function isK8sResource(value: unknown): value is K8sResource {
     return value instanceof K8sResource;
+}
+
+function isKubectlResult(value: unknown): value is KubectlResult {
+    return value instanceof KubectlResult;
 }
 
 // ===== Register Matchers =====
@@ -127,6 +177,29 @@ function isK8sResource(value: unknown): value is K8sResource {
  */
 export function registerK8sMatchers(): void {
     expect.extend({
+        /**
+         * Assert that a kubectl operation succeeded
+         */
+        async toBeSuccessful(received: unknown): Promise<MatcherResult> {
+            if (!isKubectlResult(received)) {
+                return {
+                    pass: false,
+                    message: () => 'Expected value to be a KubectlResult (from kubectl.apply/delete/patch/scale/label)',
+                };
+            }
+
+            const pass = received.successful;
+            return {
+                pass,
+                message: () =>
+                    pass
+                        ? 'Expected kubectl command to fail, but it succeeded'
+                        : `Expected kubectl command to succeed, but failed:\n${received.output.slice(0, 500)}`,
+                actual: pass ? 'succeeded' : 'failed',
+                expected: 'succeeded',
+            };
+        },
+
         /**
          * Assert that a Pod is in Running state
          */
@@ -181,8 +254,7 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{ status?: { phase?: string } }>(kind, name);
-                const actualPhase = res?.status?.phase;
+                const actualPhase = await kubectl.getJsonPath<string>(kind, name, '.status.phase');
                 const pass = actualPhase === phase;
 
                 return {
@@ -218,8 +290,7 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{ status?: { replicas?: number } }>(kind, name);
-                const actual = res?.status?.replicas ?? 0;
+                const actual = await kubectl.getJsonPath<number>(kind, name, '.status.replicas') ?? 0;
                 const pass = actual === count;
 
                 return {
@@ -255,8 +326,7 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{ status?: { availableReplicas?: number } }>(kind, name);
-                const actual = res?.status?.availableReplicas ?? 0;
+                const actual = await kubectl.getJsonPath<number>(kind, name, '.status.availableReplicas') ?? 0;
                 const pass = actual === count;
 
                 return {
@@ -290,15 +360,11 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{
-                    status?: {
-                        conditions?: Array<{ type: string; status: string }>;
-                    };
-                }>(kind, name);
-
-                const conditions = res?.status?.conditions ?? [];
-                const availableCondition = conditions.find((c) => c.type === 'Available');
-                const pass = availableCondition?.status === 'True';
+                const jsonPath = '.status.conditions[?(@.type=="Available")].status';
+                const statusValue = await kubectl.getJsonPath<string>(kind, name, jsonPath);
+                // JSONPath may return multiple values separated by space, take first
+                const actualStatus = statusValue?.split(' ')?.[0];
+                const pass = actualStatus === 'True';
 
                 return {
                     pass,
@@ -306,7 +372,7 @@ export function registerK8sMatchers(): void {
                         pass
                             ? `Expected ${kind}/${name} not to be available`
                             : `Expected ${kind}/${name} to be available`,
-                    actual: availableCondition?.status,
+                    actual: actualStatus,
                     expected: 'True',
                 };
             } catch (e) {
@@ -357,10 +423,11 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{ metadata?: { labels?: Record<string, string> } }>(kind, name);
-                const labels = res?.metadata?.labels ?? {};
-                const actualValue = labels[key];
-                const pass = value !== undefined ? actualValue === value : key in labels;
+                // Escape dots in label key for JSONPath
+                const escapedKey = key.replace(/\./g, '\\.');
+                const jsonPath = `.metadata.labels.${escapedKey}`;
+                const actualValue = await kubectl.getJsonPath<string>(kind, name, jsonPath);
+                const pass = value !== undefined ? actualValue === value : actualValue !== undefined;
 
                 return {
                     pass,
@@ -402,10 +469,11 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{ metadata?: { annotations?: Record<string, string> } }>(kind, name);
-                const annotations = res?.metadata?.annotations ?? {};
-                const actualValue = annotations[key];
-                const pass = value !== undefined ? actualValue === value : key in annotations;
+                // Escape dots in annotation key for JSONPath
+                const escapedKey = key.replace(/\./g, '\\.');
+                const jsonPath = `.metadata.annotations.${escapedKey}`;
+                const actualValue = await kubectl.getJsonPath<string>(kind, name, jsonPath);
+                const pass = value !== undefined ? actualValue === value : actualValue !== undefined;
 
                 return {
                     pass,
@@ -447,21 +515,118 @@ export function registerK8sMatchers(): void {
             const { kubectl, kind, name } = received;
 
             try {
-                const res = await kubectl.get<{
-                    status?: { conditions?: Array<{ type: string; status: string }> };
-                }>(kind, name);
-                const conditions = res?.status?.conditions ?? [];
-                const condition = conditions.find((c) => c.type === type);
-                const pass = condition?.status === status;
+                const jsonPath = `.status.conditions[?(@.type=="${type}")].status`;
+                const statusValue = await kubectl.getJsonPath<string>(kind, name, jsonPath);
+                // JSONPath may return multiple values separated by space, take first
+                const actualStatus = statusValue?.split(' ')?.[0];
+                const pass = actualStatus === status;
 
                 return {
                     pass,
                     message: () =>
                         pass
                             ? `Expected ${kind}/${name} not to have condition ${type}=${status}`
-                            : `Expected ${kind}/${name} to have condition ${type}=${status}, got ${condition?.status ?? 'not found'}`,
-                    actual: condition?.status,
+                            : `Expected ${kind}/${name} to have condition ${type}=${status}, got ${actualStatus ?? 'not found'}`,
+                    actual: actualStatus,
                     expected: status,
+                };
+            } catch (e) {
+                return {
+                    pass: false,
+                    message: () => `Failed to get ${kind}/${name}: ${e}`,
+                };
+            }
+        },
+
+        /**
+         * Assert that a resource does not exist in the cluster
+         */
+        async toNotExistInCluster(received: unknown): Promise<MatcherResult> {
+            if (!isK8sResource(received)) {
+                return {
+                    pass: false,
+                    message: () => 'Expected value to be a K8sResource',
+                };
+            }
+
+            const { kubectl, kind, name } = received;
+            const exists = await kubectl.exists(kind, name);
+
+            return {
+                pass: !exists,
+                message: () =>
+                    !exists
+                        ? `Expected ${kind}/${name} to exist in cluster`
+                        : `Expected ${kind}/${name} not to exist in cluster`,
+            };
+        },
+
+        /**
+         * Assert that a resource has a specific number of ready replicas
+         */
+        async toHaveReadyReplicas(received: unknown, ...args: unknown[]): Promise<MatcherResult> {
+            const count = args[0] as number;
+
+            if (!isK8sResource(received)) {
+                return {
+                    pass: false,
+                    message: () => 'Expected value to be a K8sResource',
+                };
+            }
+
+            const { kubectl, kind, name } = received;
+
+            try {
+                const actual = await kubectl.getJsonPath<number>(kind, name, '.status.readyReplicas') ?? 0;
+                const pass = actual === count;
+
+                return {
+                    pass,
+                    message: () =>
+                        pass
+                            ? `Expected ${kind}/${name} not to have ${count} ready replicas`
+                            : `Expected ${kind}/${name} to have ${count} ready replicas, got ${actual}`,
+                    actual,
+                    expected: count,
+                };
+            } catch (e) {
+                return {
+                    pass: false,
+                    message: () => `Failed to get ${kind}/${name}: ${e}`,
+                };
+            }
+        },
+
+        /**
+         * Assert that a resource has a specific status field value
+         * Supports dot notation for nested paths (e.g., 'phase', 'available.tflops')
+         */
+        async toHaveStatusField(received: unknown, ...args: unknown[]): Promise<MatcherResult> {
+            const path = args[0] as string;
+            const expectedValue = args[1];
+
+            if (!isK8sResource(received)) {
+                return {
+                    pass: false,
+                    message: () => 'Expected value to be a K8sResource',
+                };
+            }
+
+            const { kubectl, kind, name } = received;
+
+            try {
+                const jsonPath = `.status.${path}`;
+                const actual = await kubectl.getJsonPath<unknown>(kind, name, jsonPath);
+                const pass = actual === expectedValue;
+
+                return {
+                    pass,
+                    message: () =>
+                        pass
+                            ? `Expected ${kind}/${name} not to have status.${path} = ${JSON.stringify(expectedValue)}`
+                            : `Expected ${kind}/${name} to have status.${path} = ${JSON.stringify(expectedValue)}, got ${JSON.stringify(actual)}`,
+                    actual,
+                    expected: expectedValue,
                 };
             } catch (e) {
                 return {

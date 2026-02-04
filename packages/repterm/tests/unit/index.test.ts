@@ -43,12 +43,8 @@ describe('repterm public API', () => {
     });
 
     describe('expect exports', () => {
-        test('exports TerminalExpect class', () => {
-            expect(repterm.TerminalExpect).toBeTypeOf('function');
-        });
-
-        test('exports CommandResultExpect class', () => {
-            expect(repterm.CommandResultExpect).toBeTypeOf('function');
+        test('exports expect function', () => {
+            expect(repterm.expect).toBeTypeOf('function');
         });
 
         test('exports AssertionError class', () => {

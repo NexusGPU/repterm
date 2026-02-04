@@ -9,8 +9,8 @@ describe('loadConfig', () => {
     test('returns default config when no options provided', () => {
         const config = loadConfig();
 
-        expect(config.timeouts.suiteMs).toBe(300000);
-        expect(config.timeouts.testMs).toBe(30000);
+        expect(config.timeouts.suiteMs).toBe(1500000);
+        expect(config.timeouts.testMs).toBe(300000);
         expect(config.record.enabled).toBe(false);
         expect(config.parallel.workers).toBe(1);
     });
@@ -21,7 +21,7 @@ describe('loadConfig', () => {
             record: { enabled: true },
         });
 
-        expect(config.timeouts.suiteMs).toBe(300000); // default
+        expect(config.timeouts.suiteMs).toBe(1500000); // default
         expect(config.timeouts.testMs).toBe(5000); // overridden
         expect(config.record.enabled).toBe(true); // overridden
         expect(config.parallel.workers).toBe(1); // default
@@ -103,8 +103,8 @@ describe('getDefaultConfig', () => {
     test('default config has expected values', () => {
         const config = getDefaultConfig();
 
-        expect(config.timeouts.suiteMs).toBe(300000);
-        expect(config.timeouts.testMs).toBe(30000);
+        expect(config.timeouts.suiteMs).toBe(1500000);
+        expect(config.timeouts.testMs).toBe(300000);
         expect(config.record.enabled).toBe(false);
         expect(config.parallel.workers).toBe(1);
     });

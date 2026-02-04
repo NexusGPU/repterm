@@ -335,3 +335,119 @@ describe('Runner Lifecycle Hooks', () => {
         expect(results[0].status).toBe('pass');
     });
 });
+
+describe('Terminal mode selection', () => {
+    let artifactManager: ArtifactManager;
+    let defaultOptions: RunnerOptions;
+
+    beforeEach(() => {
+        clearTests();
+        hooksRegistry.clear();
+
+        artifactManager = new ArtifactManager({
+            baseDir: 'tmp/artifacts',
+            runId: 'test-run'
+        });
+        vi.spyOn(artifactManager, 'getCastPath').mockReturnValue('path/to/cast');
+
+        defaultOptions = {
+            config: {
+                record: { enabled: false },
+                timeouts: { testMs: 5000 },
+            } as any,
+            artifactManager,
+        };
+    });
+
+    test('uses Bun.spawn for plain test without record flag', async () => {
+        let terminalPtyMode: boolean | undefined;
+
+        describeBlock('Plain Suite', () => {
+            registerTest('plain test', async ({ terminal }) => {
+                // 普通模式不使用 PTY
+                terminalPtyMode = terminal.isPtyMode?.();
+            });
+        });
+
+        const suites = getTests();
+        const suite = suites.find((s) => s.name === 'Plain Suite')!;
+        await runSuite(suite, defaultOptions);
+
+        expect(terminalPtyMode).toBe(false);
+    });
+
+    test('uses PTY-only for test with record:true but without CLI --record', async () => {
+        let terminalPtyMode: boolean | undefined;
+        let terminalRecording: boolean | undefined;
+
+        describeBlock('Recordable Suite', { record: true }, () => {
+            registerTest('pty test', async ({ terminal }) => {
+                terminalPtyMode = terminal.isPtyMode?.();
+                terminalRecording = terminal.isRecording?.();
+            });
+        });
+
+        const suites = getTests();
+        const suite = suites.find((s) => s.name === 'Recordable Suite')!;
+        // config.record.enabled = false（默认）
+        await runSuite(suite, defaultOptions);
+
+        expect(terminalPtyMode).toBe(true);
+        expect(terminalRecording).toBe(false);
+    });
+
+    test('uses Recording mode for test with record:true and CLI --record', async () => {
+        let terminalRecording: boolean | undefined;
+        let terminalPtyMode: boolean | undefined;
+
+        describeBlock('Recording Suite', { record: true }, () => {
+            registerTest('recording test', async ({ terminal }) => {
+                terminalRecording = terminal.isRecording?.();
+                terminalPtyMode = terminal.isPtyMode?.();
+            });
+        });
+
+        const recordingOptions: RunnerOptions = {
+            config: {
+                record: { enabled: true },
+                timeouts: { testMs: 5000 },
+            } as any,
+            artifactManager,
+        };
+
+        const suites = getTests();
+        const suite = suites.find((s) => s.name === 'Recording Suite')!;
+        await runSuite(suite, recordingOptions);
+
+        expect(terminalRecording).toBe(true);
+        expect(terminalPtyMode).toBe(true);
+    });
+
+    test('uses Bun.spawn for test without record flag even with CLI --record', async () => {
+        let terminalPtyMode: boolean | undefined;
+        let terminalRecording: boolean | undefined;
+
+        describeBlock('Non-recordable Suite', () => {
+            registerTest('non-recordable test', async ({ terminal }) => {
+                terminalPtyMode = terminal.isPtyMode?.();
+                terminalRecording = terminal.isRecording?.();
+            });
+        });
+
+        const recordingOptions: RunnerOptions = {
+            config: {
+                record: { enabled: true },
+                timeouts: { testMs: 5000 },
+            } as any,
+            artifactManager,
+        };
+
+        const suites = getTests();
+        const suite = suites.find((s) => s.name === 'Non-recordable Suite')!;
+        await runSuite(suite, recordingOptions);
+
+        // 测试没有 record: true，即使 CLI 有 --record 也不启用 PTY
+        expect(terminalPtyMode).toBe(false);
+        expect(terminalRecording).toBe(false);
+    });
+});

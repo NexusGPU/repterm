@@ -5,7 +5,7 @@
  */
 
 import { parseArgs } from 'util';
-import { loadConfig } from '../runner/config.js';
+import { loadConfig, getDefaultConfig } from '../runner/config.js';
 import { createArtifactManager } from '../runner/artifacts.js';
 import { discoverTests, loadTestFiles } from '../runner/loader.js';
 import { runAllSuites } from '../runner/runner.js';
@@ -51,6 +51,10 @@ async function main(): Promise<void> {
         'recording-dir': {
           type: 'string',
         },
+        'prompt-lines': {
+          type: 'string',
+          short: 'p',
+        },
       },
       allowPositionals: true,
     });
@@ -69,7 +73,8 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Load configuration
+    // Load configuration - use default config values, only override if user specified
+    const defaultConfig = getDefaultConfig();
     const config = loadConfig({
       record: {
         enabled: args.values.record,
@@ -77,9 +82,12 @@ async function main(): Promise<void> {
       parallel: {
         workers: args.values.workers ? parseInt(args.values.workers, 10) : 1,
       },
-      timeouts: {
-        testMs: args.values.timeout ? parseInt(args.values.timeout, 10) : 30000,
-        suiteMs: 300000,
+      timeouts: args.values.timeout ? {
+        testMs: parseInt(args.values.timeout, 10),
+        suiteMs: defaultConfig.timeouts.suiteMs,
+      } : undefined,  // undefined = use DEFAULT_CONFIG
+      terminal: {
+        promptLineCount: args.values['prompt-lines'] ? parseInt(args.values['prompt-lines'], 10) : undefined,
       },
     });
 
@@ -131,8 +139,7 @@ async function main(): Promise<void> {
         console.error('No tests marked with { record: true } found.');
         console.error('Use describe/test with { record: true } to mark recording tests.');
       } else {
-        console.error('No non-recording tests found.');
-        console.error('All tests are marked with { record: true }. Use --record to run them.');
+        console.error('No tests found.');
       }
       process.exit(1);
     }
@@ -195,8 +202,9 @@ Usage:
 Options:
   -r, --record         Run recording tests (tests marked with { record: true })
   -w, --workers <n>    Number of parallel workers (default: 1)
-  -t, --timeout <ms>   Test timeout in milliseconds (default: 30000)
+  -t, --timeout <ms>   Test timeout in milliseconds (default: from config)
   -v, --verbose        Verbose output with stack traces
+  -p, --prompt-lines <n>  提示符占用的行数（用于输出捕获，0=自动检测）
   --slow-threshold <ms> Show duration for tests slower than this (default: 50)
   --recording-dir <path>   Directory for recording artifacts (default: /tmp/repterm)
   -h, --help           Show this help message

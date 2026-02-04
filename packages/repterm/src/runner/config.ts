@@ -15,6 +15,9 @@ export interface RunConfig {
   parallel: {
     workers: number;
   };
+  terminal: {
+    promptLineCount?: number;  // undefined = 自动检测
+  };
 }
 
 export interface ConfigOptions {
@@ -29,18 +32,24 @@ export interface ConfigOptions {
   parallel?: {
     workers?: number;
   };
+  terminal?: {
+    promptLineCount?: number;
+  };
 }
 
 const DEFAULT_CONFIG: RunConfig = {
   timeouts: {
-    suiteMs: 300000, // 5 minutes
-    testMs: 30000, // 30 seconds
+    suiteMs: 1500000, // 15 minutes
+    testMs: 300000, // 5 minutes
   },
   record: {
     enabled: false,
   },
   parallel: {
     workers: 1,
+  },
+  terminal: {
+    promptLineCount: undefined,  // 自动检测
   },
 };
 
@@ -60,6 +69,9 @@ export function loadConfig(options: ConfigOptions = {}): RunConfig {
     },
     parallel: {
       workers: options.parallel?.workers ?? DEFAULT_CONFIG.parallel.workers,
+    },
+    terminal: {
+      promptLineCount: options.terminal?.promptLineCount,
     },
   };
 

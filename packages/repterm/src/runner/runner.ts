@@ -135,12 +135,17 @@ export async function runTest(
   const startTime = Date.now();
   const { config, artifactManager, onResult, onTestStart } = options;
 
-  // 确定是否录制：测试级别 > suite 级别
-  // 注意：测试已经被过滤，这里只需根据配置确定单个测试的录制状态
+  // 确定执行模式：
+  // 1. testRecordConfig: 测试级别或 suite 级别的 record 配置
+  // 2. cliRecordMode: CLI --record 标志
+  // 3. shouldRecord: 只有 CLI 和 test 都启用时才完整录制（asciinema + tmux + 打字效果）
+  // 4. shouldUsePtyOnly: test 启用但 CLI 未启用时使用 PTY-only（无录制、无打字效果）
   const testRecordConfig = testCase.options?.record ?? getInheritedRecordConfig(suite);
-  const shouldRecord = testRecordConfig ?? false;
+  const cliRecordMode = config.record?.enabled ?? false;
+  const shouldRecord = cliRecordMode && testRecordConfig;  // 完整录制模式
+  const shouldUsePtyOnly = testRecordConfig && !cliRecordMode;  // PTY-only 模式
 
-  // Get recording path for this test
+  // Get recording path for this test (only in recording mode)
   const recordingPath = shouldRecord
     ? artifactManager.getCastPath(testCase.id)
     : undefined;
@@ -154,7 +159,9 @@ export async function runTest(
     cols: process.stdout.columns || 120,
     rows: process.stdout.rows || 40,
     recording: shouldRecord,
+    ptyOnly: shouldUsePtyOnly,
     recordingPath,
+    promptLineCount: config.terminal?.promptLineCount,
   });
 
   // Build initial test context with inherited context from beforeAll hooks
