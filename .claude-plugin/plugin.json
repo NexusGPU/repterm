@@ -1,0 +1,8 @@
+{
+  "name": "repterm",
+  "description": "Repterm CLI/TUI 测试框架开发助手，包含核心组件和 plugin-kubectl 插件的维护指南",
+  "version": "0.1.0",
+  "author": {
+    "name": "Repterm Team"
+  }
+}

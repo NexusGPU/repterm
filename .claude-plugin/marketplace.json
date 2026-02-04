@@ -1,0 +1,13 @@
+{
+  "name": "repterm",
+  "owner": {
+    "name": "TensorFusion"
+  },
+  "plugins": [
+    {
+      "name": "repterm-plugin",
+      "source": "./",
+      "description": "Repterm CLI/TUI 测试框架开发助手"
+    }
+  ]
+}
