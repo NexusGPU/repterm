@@ -35,7 +35,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
 
         // ===== Step 1: 准备环境 =====
         await step('获取测试 GPU', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 60,
             pauseAfter: 1000
         }, async () => {
@@ -52,7 +52,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
 
         // ===== Step 2: 创建带 Annotation 的 Deployment（核心操作）=====
         await step('创建带 Annotation 的 Deployment', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 100,
             pauseAfter: 3000
         }, async () => {
@@ -86,7 +86,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
 
         // ===== Step 3: 验证 Deployment 和 Pod 状态 =====
         await step('检查 Deployment 可用状态', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {
@@ -116,7 +116,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
 
         // ===== Step 4: 验证 GPU 资源分配结果 =====
         await step('检查 GPU 可用资源变化', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2500
         }, async () => {
@@ -131,7 +131,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
 
         // ===== 清理 =====
         await step('删除 Deployment', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {

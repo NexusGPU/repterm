@@ -20,7 +20,6 @@ import {
     DEFAULT_TIMEOUT,
     getFirstGpuName,
     getGpuAvailable,
-    cleanup,
     parseTflops,
 } from './_config.js';
 
@@ -34,13 +33,6 @@ describe('测试场景 4: 资源释放验证', { record: true }, () => {
     // ===== Step 1: 记录初始状态 =====
     test('Step 1: 记录初始 GPU 资源状态', async (ctx) => {
         const { kubectl } = ctx.plugins;
-
-        await step('清理可能存在的旧资源', async () => {
-            await cleanup(kubectl, [
-                { kind: 'tensorfusionworkload', name: WORKLOAD_NAME },
-            ]);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        });
 
         await step('获取测试 GPU', async () => {
             gpuName = await getFirstGpuName(kubectl);

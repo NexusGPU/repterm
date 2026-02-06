@@ -39,7 +39,7 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
 
         // ===== Step 1: 记录初始状态 =====
         await step('获取测试 GPU', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 60,
             pauseAfter: 1000
         }, async () => {
@@ -57,7 +57,7 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
 
         // ===== Step 2: 创建超量资源请求的 Workload（核心操作）=====
         await step('创建超量资源请求的 Workload', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 100,
             pauseAfter: 2000
         }, async () => {
@@ -75,7 +75,7 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
 
         // ===== Step 3: 主窗格 watch，新窗格验证 =====
         await step('观察 Workload 状态并验证', {
-            showStepTitle: true,
+            showStepTitle: false,
             pauseAfter: 2000
         }, async () => {
             // 在主窗格启动 watch（等待命令输入完成后返回）
@@ -117,7 +117,7 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
 
         // ===== Step 4: 清理 =====
         await step('删除 TensorFusionWorkload', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {
