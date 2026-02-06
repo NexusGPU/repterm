@@ -327,7 +327,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     // In recording mode, simulate human typing
     if (this.recording) {
-      await this.typeWithDelay(text);
+      const stepOptions = getCurrentStepOptions();
+      const typingSpeed = stepOptions?.typingSpeed ?? 80;
+      await this.typeWithDelay(text, typingSpeed);
     } else {
       this.session.write(text);
     }
@@ -823,11 +825,16 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private async displayStepTitle(title: string): Promise<void> {
     if (!this.recording) return;
 
+    const stepOptions = getCurrentStepOptions();
+    const typingSpeed = stepOptions?.typingSpeed;
+
     // 显示注释形式的标题
     const comment = `# === ${title} ===`;
-    await this.typeWithDelay(comment, 40, false); // 标题快速打字
+    await this.typeWithDelay(comment, typingSpeed ?? 40, false);
     this.session.write('\r');
-    await this.sleep(500); // 让标题显示片刻
+    if (typingSpeed !== 0) {
+      await this.sleep(500); // 让标题显示片刻
+    }
   }
 
   /**
