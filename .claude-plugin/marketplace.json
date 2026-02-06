@@ -5,7 +5,7 @@
   },
   "plugins": [
     {
-      "name": "repterm-plugin",
+      "name": "repterm",
       "source": "./",
       "description": "Repterm CLI/TUI 测试框架开发助手"
     }
