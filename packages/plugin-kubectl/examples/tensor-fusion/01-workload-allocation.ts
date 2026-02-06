@@ -35,7 +35,7 @@ describe('测试场景 1: 正常资源分配 - TensorFusionWorkload', { record: 
 
         // ===== Step 1: 记录初始状态 =====
         await step('获取测试 GPU', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 60,  // 准备阶段快速执行
             pauseAfter: 1000
         }, async () => {
@@ -52,7 +52,7 @@ describe('测试场景 1: 正常资源分配 - TensorFusionWorkload', { record: 
 
         // ===== Step 2: 创建资源（核心操作）=====
         await step('创建 Workload', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 100,  // 核心操作慢速打字
             pauseAfter: 3000   // 重要输出，多停留
         }, async () => {
@@ -69,7 +69,7 @@ describe('测试场景 1: 正常资源分配 - TensorFusionWorkload', { record: 
 
         // ===== Step 3: 等待 Workload 就绪 =====
         await step('等待 Ready 条件', {
-            showStepTitle: true,
+            showStepTitle: false,
             pauseAfter: 2000
         }, async () => {
             const result = await kubectl.wait(
@@ -91,7 +91,7 @@ describe('测试场景 1: 正常资源分配 - TensorFusionWorkload', { record: 
 
         // ===== Step 4: 验证资源分配结果 =====
         await step('检查 GPU 可用资源变化', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2500  // 验证结果需要阅读时间
         }, async () => {
@@ -119,7 +119,7 @@ describe('测试场景 1: 正常资源分配 - TensorFusionWorkload', { record: 
 
         // ===== Step 5: 验证 Worker Pod =====
         await step('查找并验证 Worker Pod', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {
@@ -169,7 +169,7 @@ describe('测试场景 1: 正常资源分配 - TensorFusionWorkload', { record: 
 
         // ===== 清理 =====
         await step('删除 TensorFusionWorkload', {
-            showStepTitle: true,
+            showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {
