@@ -1,106 +1,144 @@
 # @repterm/plugin-kubectl 指南
 
-## 1. 目录结构
+## 1. 快速定位
+
+- 核心实现：`packages/plugin-kubectl/src/index.ts`
+- Matcher：`packages/plugin-kubectl/src/matchers.ts`
+- 类型补充：`packages/plugin-kubectl/src/matchers.d.ts`
+- 示例：`packages/plugin-kubectl/examples/*.ts`
+
+## 2. 正确的装配方式
+
+```ts
+import { defineConfig, createTestWithPlugins } from 'repterm';
+import { kubectlPlugin } from '@repterm/plugin-kubectl';
+
+const config = defineConfig({
+  plugins: [kubectlPlugin({ namespace: 'default' })] as const,
+});
+
+const test = createTestWithPlugins(config);
 ```
-packages/plugin-kubectl/
-├── src/
-│   ├── index.ts        # 插件定义、kubectl 方法、上下文
-│   ├── matchers.ts     # expect 扩展（pod/deployment 等）
-│   └── matchers.d.ts   # 类型声明
-├── examples/           # 00-06 示例
-├── README.md           # API 说明与运行命令
-└── package.json        # Bun/TypeScript 构建脚本
+
+> 不再推荐使用旧的 runtime 手工构造示例；外部使用统一走 `defineConfig(...)`。
+
+## 3. 插件结构（源码对齐）
+
+`kubectlPlugin(options)` 返回 `definePlugin('kubectl', setup)` 的结果，`setup` 输出三部分：
+
+1. `methods`：挂到 `ctx.plugins.kubectl`。
+2. `context`：挂到 `ctx.kubectl`（当前 namespace / kubeconfig）。
+3. `hooks`：当前主要用于 before/after test 的调试提示。
+
+## 4. 主要 API
+
+### 4.1 基础执行与读取
+
+- `run(args)`：执行 `kubectl ...` 并返回输出文本。
+- `command(args)`：只生成命令字符串。
+- `get(resource, name?, options?)`：
+  - 默认返回 JSON 解析结果。
+  - `options.jqFilter` 支持追加 `| jq '...'`。
+  - `options.watch: true` 返回 `WatchProcess`（包含 `interrupt()`）。
+- `getJsonPath(resource, name, jsonPath, options?)`
+- `exists(resource, name)`
+- `clusterInfo()`
+
+### 4.2 资源生命周期
+
+- `apply(yaml)`
+- `delete(resource, name, { force? })`
+- `waitForPod(name, status?, timeout?)`
+- `wait(resource, name, condition, { timeout?, forDelete? })`
+- `waitForJsonPath(resource, name, jsonPath, value, timeout?)`
+- `waitForReplicas(resource, name, count, timeout?)`
+- `waitForService(name, timeout?)`
+
+### 4.3 管理与运维能力
+
+- `logs(pod, options?)`
+- `exec(pod, command, options?)`
+- `describe(resource, name?)`
+- `scale(resource, name, replicas)`
+- `patch(resource, name, patch, type?)`
+- `label(resource, name, labels)`
+- `annotate(resource, name, annotations)`
+- `rollout.status/history/undo/restart/pause/resume`
+- `portForward(resource, ports, options?)`（返回 `stop()`）
+- `getEvents(options?)`
+- `getNodes(options?)`
+- `cp(source, dest, options?)`
+
+## 5. Watch 与 PTY 模式注意事项
+
+1. `get(..., { watch: true })` 返回持续进程控制器，必须 `await watch.interrupt()` 主动收尾。
+2. 录制或 PTY 模式下，插件内部会在 JSON 解析路径优先走 `silent` 二次执行获取干净 stdout。
+3. 断言退出码时，优先在非 PTY/silent 结果上判断，避免 `code === -1` 干扰。
+
+## 6. Matcher 与资源包装器
+
+`matchers.ts` 会注册以下 matcher（核心新增项已包含）：
+
+- `toBeSuccessful`
+- `toExistInCluster`
+- `toNotExistInCluster`
+- `toBeRunning`
+- `toHavePhase`
+- `toHaveReplicas`
+- `toHaveReadyReplicas`
+- `toHaveAvailableReplicas`
+- `toBeAvailable`
+- `toHaveLabel`
+- `toHaveAnnotation`
+- `toHaveCondition`
+- `toHaveStatusField`
+
+可用资源包装器：
+
+- 标准资源：`pod` / `deployment` / `service` / `statefulset` / `job` / `configmap` / `secret` / `resource` / `crd`
+- CRD 辅助：`gpupool` / `gpu` / `tensorfusionworkload` / `tensorfusionconnection`
+
+> 按你的要求，这里只保留 CRD 辅助入口说明，不新增 Tensor Fusion 专章。
+
+## 7. 示例模板
+
+```ts
+import { defineConfig, createTestWithPlugins, expect } from 'repterm';
+import { kubectlPlugin, pod, deployment } from '@repterm/plugin-kubectl';
+
+const config = defineConfig({
+  plugins: [kubectlPlugin({ namespace: 'default' })] as const,
+});
+
+const test = createTestWithPlugins(config);
+
+test('deploy and verify', async (ctx) => {
+  const k = ctx.plugins.kubectl;
+
+  await k.apply(manifestYaml);
+  await k.waitForPod('demo', 'Running', 60_000);
+
+  await expect(pod(k, 'demo')).toBeRunning();
+  await expect(deployment(k, 'demo')).toHaveReadyReplicas(2);
+
+  const watch = await k.get('pods', undefined, { watch: true, output: 'wide' });
+  await watch.interrupt();
+});
 ```
 
-## 2. 插件定义要点（`src/index.ts`）
-1. `definePlugin` 输出：
-   ```ts
-   export const kubectlPlugin = definePlugin({
-     name: 'kubectl',
-     setup(ctx: BasePluginContext) {
-       return {
-         methods: { kubectl: { run, apply, delete, ... } },
-         context: { kubectl: { namespace, kubeconfig } },
-         hooks: { beforeTest, afterTest, beforeCommand, afterOutput }
-       };
-     }
-   });
-   ```
-2. 提供的主要方法：
-   - `run(args)` / `command(args)`：直接执行或仅生成带 namespace 的命令字符串。
-   - 资源操作：`apply`, `delete`, `get<T>`, `exists`, `waitForPod`, `wait`, `waitForReplicas`。
-   - Rollout 管理：`rollout.status/history/undo/restart/pause/resume`.
-   - 端口转发：`portForward('svc/foo', '8080:80', opts)`，返回带 `stop()` 的句柄。
-   - 事件/节点：`getEvents`, `getNodes`.
-   - 复制文件：`cp('pod:/path', '/local')`.
-3. Options 接口（`LogsOptions`, `ExecOptions`, `WaitOptions`, `PortForwardOptions`, `DeleteOptions` 等）位于同文件顶部，可在新插件中参考命名方式。
+## 8. 示例运行命令
 
-## 3. Matcher 扩展（`src/matchers.ts`）
-1. `K8sResource` 包装 `{ kubectl, kind, name }`。提供 `pod()`、`deployment()`、`service()`、`statefulset()`、`job()`、`configmap()`、`secret()`、`resource()`。
-2. `registerK8sMatchers()` 调用 `expect.extend`，注册以下 matcher：
-   - `toExistInCluster`
-   - `toBeRunning(timeout?)`
-   - `toHavePhase(phase)`
-   - `toHaveReplicas(count)`
-   - `toHaveAvailableReplicas(count)`
-   - `toBeAvailable()`
-   - `toHaveLabel(key, value?)`
-   - `toHaveAnnotation(key, value?)`
-   - `toHaveCondition(type, status)`
-3. 所有 matcher 都检查 `received instanceof K8sResource`，失败信息清晰，可直接用于 CLI 输出。
-
-## 4. 示例脚本（`examples/README.md`）
-| 文件 | 内容 | 依赖 |
-| --- | --- | --- |
-| `00-simple-demo.ts` | 验证插件装配，无需真实集群 | Bun |
-| `01-basic-kubectl.ts` | apply/delete/get/exists/waitForPod | 连接到 K8s |
-| `02-debugging.ts` | logs/exec/describe | K8s |
-| `03-resource-management.ts` | scale/patch/label/annotate/wait | K8s |
-| `04-rollout.ts` | rollout.status/history/undo | K8s |
-| `05-matchers.ts` | 所有 expect matcher 的示例 | K8s |
-| `06-advanced.ts` | portForward/getEvents/getNodes/cp | K8s |
-
-运行方式（在 repo 根）：
 ```bash
-# 无需 K8s 的演示
+# 无集群可跑
 bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
 
-# 需 K8s 的示例
-KUBECONFIG=~/.kube/config bun run repterm packages/plugin-kubectl/examples/01-basic-kubectl.ts
+# 需集群
+bun run repterm packages/plugin-kubectl/examples/01-basic-kubectl.ts
+bun run repterm packages/plugin-kubectl/examples/05-matchers.ts
 ```
-
-## 5. 在测试中使用插件
-1. 定义配置：
-   ```ts
-   import { defineConfig } from 'repterm';
-   import { kubectlPlugin } from '@repterm/plugin-kubectl';
-
-   const runtime = new PluginRuntime({
-     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
-   });
-   const test = createTestWithPlugins(runtime);
-   ```
-2. 在测试里：
-   ```ts
-   test('pod ready', async (ctx) => {
-     await ctx.plugins.kubectl.apply(manifest);
-     await ctx.plugins.kubectl.waitForPod('demo', 'Running', 60000);
-     await expect(pod(ctx.plugins.kubectl, 'demo')).toBeRunning();
-   });
-   ```
-3. 结合 `describeWithPlugins` 批量共享 runtime。
-
-## 6. 扩展/自定义
-- 若要新增企业内插件，可复制 `packages/plugin-kubectl` 结构：  
-  - 定义 context/methods，必要时在 `PluginHooks` 中拦截 before/afterCommand。  
-  - 提供 `matchers.ts` 扩展 `expect` 并导出 `registerXxxMatchers()`。  
-  - 添加示例与 README，方便文档引用。  
-- 更新技能时，将新插件加入本文件或独立参考文档。
-
----
 
 ## See Also
 
-- [api-cheatsheet.md](api-cheatsheet.md) - API 速查表（含 Kubectl 速查）
-- [common-patterns.md](common-patterns.md) - 常见代码模式
-- [architecture.md](architecture.md) - 插件系统架构
+- [api-cheatsheet.md](api-cheatsheet.md)
+- [common-patterns.md](common-patterns.md)
+- [troubleshooting.md](troubleshooting.md)

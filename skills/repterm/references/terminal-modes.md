@@ -1,54 +1,58 @@
-# 终端 / 录制模式速查
+# 终端模式与录制模式
 
-## 1. 执行模式
-| 模式 | 入口 | 描述 | 何时使用 |
+## 1. 四种执行路径
+
+| 模式 | 触发条件 | 底层执行 | 关键特征 |
 | --- | --- | --- | --- |
-| 非录制 + 非交互 | `Terminal.run()` 默认走 `Bun.spawn`（`packages/repterm/src/terminal/terminal.ts`） | 精确 exitCode、stdout/stderr 分离、`CommandResult` 包含 `stdout/stderr/output/duration` | 验证命令输出、管道、状态码 |
-| 录制模式 | CLI `--record`，`Terminal` 初始化 `asciinema rec --command "tmux new"` | 每个命令通过 tmux pane 执行，`waitForText/snapshot` 读 `capture-pane`，exitCode 可能为 -1 | 需要生成 `.cast` 或运行 `{ record: true }` 测试 |
-| 交互式 | `terminal.run(cmd, { interactive: true })` | 复用 PTY+tmux 流程，返回 `PTYProcessImpl`，可 `expect/send/sendRaw/interrupt` | 需要逐步等待输出、手动输入、长时间运行 |
-| silent | `run(cmd, { silent: true })` | 强制使用 `Bun.spawn`，即便在录制模式下也不写入录制流 | 需要解析 JSON/日志且不希望录制 |
+| Spawn（默认） | `terminal.run()` 且非 `interactive` 且非 PTY | `Bun.spawn` | `code` 精确、`stdout/stderr` 分离 |
+| PTY-only | 测试标记 `{ record: true }` 且 CLI 未带 `--record` | PTY | 无 `.cast`，`code` 通常为 `-1` |
+| Recording | CLI `--record` + 测试标记 `{ record: true }` | `asciinema + tmux + PTY` | 生成 `.cast`，打字效果与 pane 录制 |
+| Interactive | `terminal.run(cmd, { interactive: true })` | PTY | 可 `expect/send/sendRaw/interrupt` |
 
-## 2. Pane/会话管理
-1. `SharedTerminalState` 维护 `paneCount/currentActivePane/paneOutputs`。  
-2. `terminal.create()`（`packages/repterm/src/terminal/terminal.ts`）在录制模式下按“奇数水平，偶数垂直”策略分屏：  
-   - 写入 `Ctrl+B` 前缀后发送 `"`（水平）或 `%`（垂直）。  
-   - 新 pane index = 旧 `paneCount`，并更新 `currentActivePane`。  
-3. `selectPane()` 通过 `Ctrl+B o` 循环切换；如当前 pane 已激活则直接返回。  
-4. `waitForText`/`snapshot`：录制模式用 `capture-pane -p -t <session>:0.<pane>` 获取指定 pane；非录制模式直接读取 session buffer。  
-5. `close()`：  
-   - 录制模式：等待 2s → `Ctrl+B d` detach → `session.kill('SIGTERM')` → `tmux kill-session -t <name>`。  
-   - 非录制：直接 `session.kill`。  
-6. `terminal.create()` 在非录制模式下返回独立 `Terminal`（各自 `TerminalSession`）。  
+补充：`silent: true` 会强制走 `Bun.spawn`（即使当前在 PTY/录制上下文）。
 
-## 3. 录制文件
-1. CLI 中，ArtifactManager (`packages/repterm/src/runner/artifacts.ts`) 为每个测试创建 `<runDir>/<testId>.cast`。  
-2. `packages/repterm/src/recording/recorder.ts` 控制 asciinema 进程：  
-   - `start()`：`asciinema rec [--cols N --rows M] --command "<cmd>" <cast> --overwrite`。  
-   - `stop()`：`Subprocess.kill('SIGTERM')`。  
-   - `checkAsciinemaAvailable()`：`which asciinema`。  
-3. 若 CLI 检测缺少依赖（`checkDependencies(true)`) 会打印安装指南并退出。  
-4. `.cast` 文件默认写入 `/tmp/repterm/<runId>/`；可通过 `--recording-dir` 覆盖。  
+## 2. `--record` 的真实过滤语义
 
-## 4. 调试技巧
-1. **输出匹配失败**：  
-   - 调整 `waitForText(text, { timeout, stripAnsi })`；录制模式 strip 默认为 true。  
-   - 使用 `await terminal.snapshot()` 输出当前 buffer。  
-2. **Pane 内容错乱**：确保在多 pane 测试中不要在 shell 内切换 tmux；交由 Repterm 控制。  
-3. **录制无文件**：检查 CLI 是否运行在 `--record` 且测试标注 `{ record: true }`；留意 ArtifactManager baseDir。  
-4. **命令悬挂**：调用 `PTYProcess.interrupt()`（发送 `Ctrl+C`）或 `terminal.close()`，必要时在 afterEach 中强制清理。  
-5. **依赖缺失**：在 CI 中无法安装 asciinema/tmux 时，可避开 `--record` 或跳过包含 `{ record: true }` 的 suite。  
+基于 `packages/repterm/src/runner/filter.ts` 当前实现：
 
-## 5. 示例
-- 多终端：`packages/repterm/examples/05-multi-terminal.ts` 展示创建第二个终端与文件通信。  
-- 录制演示：`packages/repterm/examples/08-recording-demos.ts`（含 `describe(..., { record: true })` 以及独立录制测试）。  
-- 交互式：`packages/repterm/examples/03-interactive-commands.ts` 演示 `interactive: true` 与 `PTYProcess.expect`.  
+1. **不带 `--record`**：运行所有测试（包含 `{ record: true }`）。
+2. **带 `--record`**：只运行 `{ record: true }` 测试。
 
-掌握以上差异后，可在调试时快速定位“输出读取 vs. tmux pane vs. asciinema”哪一层出现问题。
+> 注意：CLI help 文本里 “Without --record: Runs tests NOT marked ...” 与实现不一致，以 `filter.ts` 为准。
 
----
+## 3. `CommandResult` 与断言策略
+
+- `CommandResult` 字段：`code/stdout/stderr/output/duration/command/successful`。
+- Spawn 模式下：`code` 可直接断言。
+- PTY / Recording / Interactive 路径：`code` 常为 `-1`，优先断言输出文本。
+- 需要可靠退出码或干净 JSON：使用 `terminal.run(cmd, { silent: true })`。
+
+## 4. 多终端与 pane 行为
+
+1. `terminal.create()` 在录制模式下通过 tmux split 创建新 pane。
+2. pane 输出由内部 `SharedTerminalState` 管理，API 层没有公开 `selectPane(...)`。
+3. 非录制模式下，`terminal.create()` 返回独立终端会话，不共享 pane。
+
+## 5. Prompt 行数与输出截取
+
+- CLI 支持 `--prompt-lines <n>`（对应 `config.terminal.promptLineCount`）。
+- 默认 `0`：框架自动检测 prompt 占用行数。
+- 录制模式下输出捕获依赖 prompt 行数，异常时可手动指定稳定值。
+
+## 6. 常用调试手法
+
+```ts
+const result = await terminal.run('some command');
+console.log(result.code, result.stdout, result.stderr);
+
+await terminal.waitForText('ready', { timeout: 10_000, stripAnsi: true });
+console.log(await terminal.snapshot());
+
+const json = await terminal.run('kubectl get pod x -o json', { silent: true });
+console.log(json.stdout);
+```
 
 ## See Also
 
-- [architecture.md](architecture.md) - 系统架构图
-- [troubleshooting.md](troubleshooting.md) - 问题排查指南
-- [examples-catalog.md](examples-catalog.md) - 示例脚本索引
+- [runner-pipeline.md](runner-pipeline.md)
+- [troubleshooting.md](troubleshooting.md)

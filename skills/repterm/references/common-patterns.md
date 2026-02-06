@@ -1,399 +1,182 @@
 # 常见代码模式
 
-> 本文档提供 Repterm 常见使用场景的代码模板，可直接复制使用。
+> 这些模板对齐当前源码签名，可直接复制后微调。
 
-## 1. 基础测试模板
+## 1. 基础测试
 
-### 1.1 最简单的测试
-
-```typescript
-import { test, expect } from 'repterm';
-
-test('basic command test', async ({ terminal }) => {
-  const result = await terminal.run('echo "Hello, World!"');
-  
-  await expect(result).toSucceed();
-  await expect(result).toContainInOutput('Hello, World!');
-});
-```
-
-### 1.2 带 describe 的测试套件
-
-```typescript
+```ts
 import { test, expect, describe } from 'repterm';
 
-describe('My Feature', () => {
-  test('should do something', async ({ terminal }) => {
-    const result = await terminal.run('some-command');
+describe('basic', () => {
+  test('success command', async ({ terminal }) => {
+    const result = await terminal.run('echo "Hello"');
     await expect(result).toSucceed();
+    await expect(result).toContainInOutput('Hello');
   });
 
-  test('should handle errors', async ({ terminal }) => {
-    const result = await terminal.run('failing-command');
+  test('failure command', async ({ terminal }) => {
+    const result = await terminal.run('cat /definitely-not-exists');
     await expect(result).toFail();
-    await expect(result).toContainInStderr('error');
+    await expect(result).toHaveStderr('No such file');
   });
 });
 ```
 
-### 1.3 带录制的测试
+## 2. 录制与 PTY-only
 
-```typescript
-import { test, expect, describe } from 'repterm';
+```ts
+import { test, describe } from 'repterm';
 
-describe('Recording Demo', { record: true }, () => {
-  test('demo command', async ({ terminal }) => {
+// 全 suite 标记 record: true
+// - CLI 不带 --record：进入 PTY-only（无 cast）
+// - CLI 带 --record：进入完整录制（asciinema + tmux）
+describe('recordable suite', { record: true }, () => {
+  test('demo', async ({ terminal }) => {
     await terminal.run('ls -la');
     await terminal.waitForText('total');
   });
 });
 
-// 或者单个测试
-test('single recording', async ({ terminal }) => {
+// 单测标记
+test('single record case', { record: true }, async ({ terminal }) => {
   await terminal.run('pwd');
-}, { record: true });
-```
-
----
-
-## 2. 交互式命令
-
-### 2.1 基础交互
-
-```typescript
-import { test, expect } from 'repterm';
-
-test('interactive command', async ({ terminal }) => {
-  const pty = await terminal.run('python3', { interactive: true });
-  
-  await pty.expect('>>>');           // 等待 Python 提示符
-  await pty.send('print("hi")\n');   // 发送输入
-  await pty.expect('hi');            // 等待输出
-  await pty.send('exit()\n');        // 退出
-  await pty.finally();               // 等待完成
 });
 ```
 
-### 2.2 带超时的交互
+## 3. 交互命令
 
-```typescript
-test('interactive with timeout', async ({ terminal }) => {
-  const pty = await terminal.run('slow-interactive-command', {
-    interactive: true,
-    timeout: 30000,
-  });
-  
-  try {
-    await pty.expect('ready', { timeout: 10000 });
-    await pty.send('input\n');
-  } finally {
-    await pty.interrupt();  // 确保清理
-  }
+```ts
+import { test } from 'repterm';
+
+test('interactive python', async ({ terminal }) => {
+  const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
+
+  await proc.expect('>>>');
+  await proc.send('print("hi")\n');
+  await proc.expect('hi');
+
+  await proc.send('exit()\n');
+  await proc.wait();
 });
 ```
 
-### 2.3 处理确认提示
+## 4. Hooks + 懒加载 Fixture
 
-```typescript
-test('confirmation prompt', async ({ terminal }) => {
-  const pty = await terminal.run('dangerous-command', { interactive: true });
-  
-  await pty.expect('Are you sure? [y/N]');
-  await pty.send('y\n');
-  await pty.expect('Done');
-  await pty.finally();
-});
-```
+```ts
+import { test, describe, beforeEach, afterEach, beforeAll, afterAll, expect } from 'repterm';
 
----
+describe('fixtures', () => {
+  beforeAll(async () => ({ rootDir: '/tmp/repterm-suite' }));
 
-## 3. Fixtures 与 Hooks
-
-### 3.1 命名 Fixture（懒加载）
-
-```typescript
-import { test, describe, beforeEach, afterEach } from 'repterm';
-
-describe('With Fixtures', () => {
-  // 定义 fixture（仅在测试请求时执行）
-  beforeEach('tmpDir', async () => {
-    const dir = `/tmp/test-${Date.now()}`;
-    await Bun.$`mkdir -p ${dir}`;
-    return dir;
+  beforeEach('tmpDir', async ({ rootDir }) => {
+    const tmpDir = `${rootDir}/${Date.now()}`;
+    await Bun.$`mkdir -p ${tmpDir}`;
+    return tmpDir;
   });
 
-  afterEach('tmpDir', async (tmpDir: string) => {
+  afterEach('tmpDir', async (tmpDir) => {
     await Bun.$`rm -rf ${tmpDir}`;
   });
 
-  // 使用 fixture（在参数中请求）
-  test('uses tmpDir', async ({ terminal, tmpDir }) => {
-    await terminal.run(`touch ${tmpDir}/test.txt`);
+  afterAll(async ({ rootDir }) => {
+    await Bun.$`rm -rf ${rootDir}`;
+  });
+
+  test('uses fixture', async ({ terminal, tmpDir }) => {
+    await terminal.run(`touch ${tmpDir}/a.txt`);
     const result = await terminal.run(`ls ${tmpDir}`);
-    await expect(result).toContainInOutput('test.txt');
-  });
-
-  // 不使用 fixture（fixture 不会执行）
-  test('no fixture needed', async ({ terminal }) => {
-    await terminal.run('echo hello');
+    await expect(result).toContainInOutput('a.txt');
   });
 });
 ```
 
-### 3.2 beforeAll/afterAll（共享资源）
+## 5. 多终端
 
-```typescript
-import { test, describe, beforeAll, afterAll } from 'repterm';
+```ts
+import { test, expect, describe } from 'repterm';
 
-describe('Shared Resources', () => {
-  beforeAll(async () => {
-    // 启动服务器
-    const server = Bun.serve({
-      port: 3000,
-      fetch: () => new Response('OK'),
-    });
-    return { server, port: 3000 };
-  });
-
-  afterAll(async ({ server }) => {
-    server.stop();
-  });
-
-  test('can reach server', async ({ terminal, port }) => {
-    const result = await terminal.run(`curl http://localhost:${port}`);
-    await expect(result).toContainInOutput('OK');
-  });
-});
-```
-
-### 3.3 嵌套 Suite 继承 Context
-
-```typescript
-describe('Parent', () => {
-  beforeAll(async () => ({ parentValue: 'from parent' }));
-
-  describe('Child', () => {
-    beforeAll(async () => ({ childValue: 'from child' }));
-
-    test('has both values', async ({ terminal, parentValue, childValue }) => {
-      console.log(parentValue);  // 'from parent'
-      console.log(childValue);   // 'from child'
-    });
-  });
-});
-```
-
----
-
-## 4. 多终端测试
-
-### 4.1 基础多终端
-
-```typescript
-import { test, describe } from 'repterm';
-
-describe('Multi-Terminal', { record: true }, () => {
-  test('two terminals communicate', async ({ terminal }) => {
-    // 创建第二个终端
+describe('multi terminal', { record: true }, () => {
+  test('share file', async ({ terminal }) => {
     const terminal2 = await terminal.create();
 
-    // 在第一个终端写文件
-    await terminal.run('echo "message" > /tmp/shared.txt');
-
-    // 在第二个终端读文件
+    await terminal.run('echo message > /tmp/shared.txt');
     const result = await terminal2.run('cat /tmp/shared.txt');
+
     await expect(result).toContainInOutput('message');
   });
 });
 ```
 
-### 4.2 服务器-客户端模式
+## 6. 插件接入（defineConfig）
 
-```typescript
-import { test, describe } from 'repterm';
+```ts
+import { defineConfig, definePlugin, createTestWithPlugins, expect } from 'repterm';
 
-describe('Server-Client', { record: true }, () => {
-  test('client connects to server', async ({ terminal }) => {
-    // 启动服务器（后台）
-    const serverPty = await terminal.run('python3 -m http.server 8080', {
-      interactive: true,
-    });
+const tracePlugin = definePlugin('trace', () => ({
+  methods: {
+    mark: async (name: string) => Bun.write('/tmp/trace.log', `${name}\n`),
+  },
+  context: { traceEnabled: true },
+}));
 
-    // 等待服务器就绪
-    await terminal.waitForText('Serving HTTP');
+const config = defineConfig({
+  plugins: [tracePlugin] as const,
+});
 
-    // 创建客户端终端
-    const client = await terminal.create();
-    
-    // 发送请求
-    const result = await client.run('curl http://localhost:8080');
-    await expect(result).toContainInOutput('Directory listing');
+const test = createTestWithPlugins(config);
 
-    // 清理
-    await serverPty.interrupt();
-  });
+test('plugin test', async (ctx) => {
+  await ctx.plugins.trace.mark('started');
+  await expect(ctx.traceEnabled).toBe(true);
 });
 ```
 
----
+## 7. Kubectl 插件
 
-## 5. 错误处理
+```ts
+import { defineConfig, createTestWithPlugins, expect } from 'repterm';
+import { kubectlPlugin, pod, deployment } from '@repterm/plugin-kubectl';
 
-### 5.1 预期失败
-
-```typescript
-import { test, expect } from 'repterm';
-
-test('expects failure', async ({ terminal }) => {
-  const result = await terminal.run('exit 1');
-  
-  await expect(result).toFail();
-  await expect(result).toHaveExitCode(1);
-});
-```
-
-### 5.2 捕获特定错误
-
-```typescript
-import { test, expect } from 'repterm';
-
-test('handles error message', async ({ terminal }) => {
-  const result = await terminal.run('cat nonexistent.txt');
-  
-  await expect(result).toFail();
-  await expect(result).toContainInStderr('No such file');
-});
-```
-
-### 5.3 Step 中的错误
-
-```typescript
-import { test } from 'repterm';
-
-test('multi-step with potential failure', async ({ terminal }) => {
-  await test.step('setup', async () => {
-    await terminal.run('mkdir -p /tmp/test');
-  });
-
-  await test.step('operation that might fail', async () => {
-    const result = await terminal.run('risky-command');
-    // 如果这里失败，错误会记录到 step 中
-  });
-
-  await test.step('cleanup', async () => {
-    await terminal.run('rm -rf /tmp/test');
-  });
-});
-```
-
----
-
-## 6. Kubectl 插件模式
-
-### 6.1 基础 Pod 操作
-
-```typescript
-import { PluginRuntime, createTestWithPlugins } from 'repterm';
-import { kubectlPlugin, pod } from '@repterm/plugin-kubectl';
-
-const runtime = new PluginRuntime({
+const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
-const test = createTestWithPlugins(runtime);
+const test = createTestWithPlugins(config);
 
-test('create and verify pod', async (ctx) => {
+test('deployment ready', async (ctx) => {
   const k = ctx.plugins.kubectl;
 
-  // 创建 Pod
-  await k.apply('manifests/nginx.yaml');
+  await k.apply(manifestYaml);
+  await k.waitForPod('demo', 'Running', 60_000);
 
-  // 等待 Running
-  await k.waitForPod('nginx', 'Running', 60000);
+  await expect(pod(k, 'demo')).toBeRunning();
+  await expect(deployment(k, 'demo')).toHaveReadyReplicas(2);
 
-  // 断言
-  await expect(pod(k, 'nginx')).toBeRunning();
-
-  // 清理
-  await k.delete('pod', 'nginx');
+  // watch 模式需要手动中断
+  const watch = await k.get('pods', undefined, { watch: true, output: 'wide' });
+  await watch.interrupt();
 });
 ```
 
-### 6.2 Deployment 和 Rollout
+## 8. 调试输出
 
-```typescript
-test('deployment rollout', async (ctx) => {
-  const k = ctx.plugins.kubectl;
+```ts
+import { test } from 'repterm';
 
-  await k.apply('manifests/deployment.yaml');
-  await k.rollout.status('deployment', 'my-app');
-
-  // 检查副本数
-  await expect(deployment(k, 'my-app')).toHaveAvailableReplicas(3);
-
-  // 重启
-  await k.rollout.restart('deployment', 'my-app');
-  await k.rollout.status('deployment', 'my-app');
-});
-```
-
-### 6.3 Port Forward
-
-```typescript
-test('port forward', async (ctx) => {
-  const k = ctx.plugins.kubectl;
-
-  await k.apply('manifests/service.yaml');
-
-  // 启动端口转发
-  const pf = await k.portForward('svc/my-service', '8080:80');
-
-  try {
-    // 使用转发的端口
-    const result = await ctx.terminal.run('curl http://localhost:8080');
-    await expect(result).toContainInOutput('OK');
-  } finally {
-    // 停止转发
-    await pf.stop();
-  }
-});
-```
-
----
-
-## 7. 调试模式
-
-### 7.1 打印终端内容
-
-```typescript
-test('debug output', async ({ terminal }) => {
+test('debug command', async ({ terminal }) => {
   const result = await terminal.run('complex-command');
-  
-  // 打印完整输出用于调试
+
+  console.log('code:', result.code);
   console.log('stdout:', result.stdout);
   console.log('stderr:', result.stderr);
-  console.log('exitCode:', result.exitCode);
 
-  // 打印终端快照
   const snapshot = await terminal.snapshot();
-  console.log('terminal:', snapshot);
+  console.log('snapshot:', snapshot);
 });
 ```
-
-### 7.2 增加超时
-
-```typescript
-test('slow operation', async ({ terminal }) => {
-  const result = await terminal.run('slow-command', {
-    timeout: 60000,  // 60 秒
-  });
-}, { timeout: 120000 });  // 测试整体 120 秒
-```
-
----
 
 ## See Also
 
-- [api-cheatsheet.md](api-cheatsheet.md) - API 速查表
-- [examples-catalog.md](examples-catalog.md) - 完整示例索引
-- [troubleshooting.md](troubleshooting.md) - 问题排查指南
+- [api-cheatsheet.md](api-cheatsheet.md)
+- [terminal-modes.md](terminal-modes.md)
+- [troubleshooting.md](troubleshooting.md)

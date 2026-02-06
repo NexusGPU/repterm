@@ -1,187 +1,131 @@
 # Repterm 架构速览
 
-## 系统架构图
+## 1. 分层结构
 
 ```mermaid
 graph TB
-    subgraph CLI["CLI 层"]
-        Entry["cli/index.ts<br/>入口"]
-        Config["runner/config.ts<br/>配置加载"]
-        Reporter["cli/reporter.ts<br/>结果报告"]
+    subgraph CLI["CLI"]
+        CLIEntry["src/cli/index.ts"]
+        Reporter["src/cli/reporter.ts"]
     end
 
-    subgraph Runner["Runner 层"]
-        Loader["runner/loader.ts<br/>测试发现"]
-        Filter["runner/filter.ts<br/>测试过滤"]
-        RunnerCore["runner/runner.ts<br/>执行引擎"]
-        Scheduler["runner/scheduler.ts<br/>并行调度"]
-        Artifacts["runner/artifacts.ts<br/>产物管理"]
+    subgraph Runner["Runner"]
+        Loader["runner/loader.ts"]
+        Filter["runner/filter.ts"]
+        RunnerCore["runner/runner.ts"]
+        Scheduler["runner/scheduler.ts"]
+        Worker["runner/worker*.ts"]
+        Artifacts["runner/artifacts.ts"]
     end
 
-    subgraph Terminal["Terminal 层"]
-        TerminalAPI["terminal/terminal.ts<br/>终端 API"]
-        Session["terminal/session.ts<br/>PTY 会话"]
-        Recorder["recording/recorder.ts<br/>录制器"]
+    subgraph API["API"]
+        TestAPI["api/test.ts + describe.ts"]
+        Hooks["api/hooks.ts"]
+        Expect["api/expect.ts"]
+        Steps["api/steps.ts"]
+        Plugin["plugin/index.ts + withPlugins.ts"]
     end
 
-    subgraph API["API 层"]
-        DSL["api/test.ts<br/>test/describe"]
-        Expect["api/expect.ts<br/>断言系统"]
-        Hooks["api/hooks.ts<br/>生命周期"]
-        Plugin["plugin/index.ts<br/>插件系统"]
+    subgraph Terminal["Terminal"]
+        TerminalImpl["terminal/terminal.ts"]
+        Session["terminal/session.ts"]
+        Recorder["recording/recorder.ts"]
     end
 
-    Entry --> Config
-    Entry --> Loader
-    Loader --> Filter
-    Filter --> RunnerCore
-    Filter --> Scheduler
-    RunnerCore --> TerminalAPI
+    CLIEntry --> Loader
+    CLIEntry --> Filter
+    CLIEntry --> RunnerCore
+    CLIEntry --> Scheduler
     RunnerCore --> Hooks
-    Scheduler --> RunnerCore
-    TerminalAPI --> Session
-    TerminalAPI --> Recorder
+    RunnerCore --> TerminalImpl
+    RunnerCore --> Artifacts
+    Scheduler --> Worker
+    Worker --> RunnerCore
     RunnerCore --> Reporter
-    Artifacts --> Reporter
-
-    DSL -.-> RunnerCore
-    Expect -.-> RunnerCore
-    Plugin -.-> DSL
+    TestAPI -.-> RunnerCore
+    Plugin -.-> TestAPI
+    TerminalImpl --> Session
+    TerminalImpl --> Recorder
 ```
 
-## 执行流程图
+## 2. 端到端执行链路
 
 ```mermaid
 sequenceDiagram
     participant CLI
-    participant Config
     participant Loader
+    participant Registry
+    participant Filter
     participant Runner
     participant Terminal
     participant Reporter
 
-    CLI->>Config: loadConfig()
-    CLI->>Loader: discoverTests()
-    Loader-->>CLI: TestSuite[]
-    
-    alt workers = 1
-        CLI->>Runner: runAllSuites()
+    CLI->>Loader: discoverTests(paths)
+    CLI->>Loader: loadTestFiles(files)
+    Loader-->>Registry: register suites/tests
+    CLI->>Filter: filterSuites(allSuites, recordMode)
+
+    alt workers == 1
+      CLI->>Runner: runAllSuites(...)
     else workers > 1
-        CLI->>Runner: createScheduler()
-        Runner->>Runner: fork workers
+      CLI->>Runner: createScheduler(...).run(...)
     end
 
-    loop For each suite
-        Runner->>Runner: runSuite()
-        Runner->>Runner: beforeAll hooks
-        
-        loop For each test
-            Runner->>Terminal: create()
-            Runner->>Runner: beforeEach hooks
-            Runner->>Terminal: run commands
-            Terminal-->>Runner: CommandResult
-            Runner->>Runner: afterEach hooks
-            Runner->>Reporter: onTestResult()
-        end
-        
-        Runner->>Runner: afterAll hooks
-    end
-
-    Runner->>Reporter: onRunComplete()
+    Runner->>Reporter: onTestStart
+    Runner->>Terminal: createTerminal({ recording, ptyOnly })
+    Runner->>Runner: beforeEach -> test -> afterEach
+    Runner->>Reporter: onTestResult
+    Runner->>Reporter: onRunComplete
 ```
 
-## 终端模式决策图
+## 3. 终端模式判定（当前实现）
 
-```mermaid
-flowchart TD
-    Start["terminal.run(cmd, opts)"] --> CheckRecord{录制模式?}
-    
-    CheckRecord -->|否| CheckInteractive{interactive?}
-    CheckRecord -->|是| CheckSilent{silent?}
-    
-    CheckInteractive -->|否| BunSpawn["Bun.spawn<br/>精确 exitCode"]
-    CheckInteractive -->|是| PTY["PTY 模式<br/>支持 expect/send"]
-    
-    CheckSilent -->|是| BunSpawn
-    CheckSilent -->|否| TmuxPTY["tmux + PTY<br/>录制到 .cast"]
-    
-    BunSpawn --> Result["CommandResult"]
-    PTY --> Result
-    TmuxPTY --> Result
+在 `runTest()`（`runner/runner.ts`）中：
 
-    style BunSpawn fill:#90EE90
-    style PTY fill:#87CEEB
-    style TmuxPTY fill:#DDA0DD
-```
+- `testRecordConfig = test.options.record ?? inheritedSuiteRecord`
+- `cliRecordMode = config.record.enabled`
+- `shouldRecord = cliRecordMode && testRecordConfig`
+- `shouldUsePtyOnly = testRecordConfig && !cliRecordMode`
 
+对应 `terminal.run()` 的执行路径：
 
-## 1. CLI → Runner 管线
-1. CLI 入口 `packages/repterm/src/cli/index.ts`：
-   - 解析命令行参数（record/workers/timeout/verbose 等）。
-   - `loadConfig`（`packages/repterm/src/runner/config.ts`）融合默认配置。
-   - `createArtifactManager`（`packages/repterm/src/runner/artifacts.ts`）生成 run 目录。
-   - `discoverTests` / `loadTestFiles`（`packages/repterm/src/runner/loader.ts`）注册 suite。
-   - 根据 `--record` 使用 `filterSuites`（`packages/repterm/src/runner/filter.ts`）筛选测试。
-   - Worker=1：`runAllSuites`; Worker>1：`createScheduler`.
-   - `createReporter` 订阅 `onTestStart` / `onTestResult` / 结束汇总。
+| 场景 | 执行方式 | 结果特征 |
+| --- | --- | --- |
+| 默认（非交互） | `Bun.spawn` | `code` 可可靠断言 |
+| PTY-only | PTY | 通常 `code = -1` |
+| Recording | `asciinema + tmux + PTY` | 生成 `.cast` |
+| Interactive | PTY | 支持 `expect/send/interrupt` |
+| `silent: true` | 强制 `Bun.spawn` | 适合 JSON/退出码校验 |
 
-2. Runner (`packages/repterm/src/runner/runner.ts`)：  
-   - `runSuite` 采用“洋葱”模型：`beforeAll` → 自身测试 → 子 suite → `afterAll`。  
-   - `runTest`：创建终端 → 解析 fixture（`hooksRegistry.runBeforeEachFor`）→ 执行 `test.fn` → `hooksRegistry.runAfterEachFor` 清理 → `RunResult`。
+## 4. API 与插件关系
 
-3. 并行调度 (`packages/repterm/src/runner/scheduler.ts` + `worker.ts` + `worker-runner.ts`)：  
-   - Scheduler 预热多个 worker 子进程，分发 suite。  
-   - Worker 内构建 ArtifactManager + `runSuite`，实时通过 IPC 发送 `result/done/error` 事件。  
-   - 主进程聚合结果并交给 Reporter。
+- 公共入口：`packages/repterm/src/index.ts`
+- DSL：`test/describe/step/hooks`
+- 断言：`expect.extend(...)` 内置终端与命令结果 matcher
+- 插件系统：
+  - `definePlugin(name, setup)` 定义插件
+  - `defineConfig({ plugins })` 创建 runtime
+  - `createTestWithPlugins(config)` 自动注入 `ctx.plugins.*`
 
-## 2. Terminal/Recording 层
-1. `Terminal` (`packages/repterm/src/terminal/terminal.ts`)：  
-   - 懒初始化 `TerminalSession`（`packages/repterm/src/terminal/session.ts`）。  
-   - 非录制：直接 `Bun.spawn` 执行命令（stdout/stderr 分离）。  
-   - 录制或交互：通过 tmux pane + `PTYProcessImpl`，`waitForText` 依赖 `capture-pane`。  
-   - `terminal.create()` 在 tmux 中拆分 pane，并共享 `SharedTerminalState` 追踪 pane 输出。  
-   - `close()` 负责发送 `Ctrl+B d` + `tmux kill-session`，确保 asciinema 收尾。
+## 5. Kubectl 插件接入点
 
-2. Recorder (`packages/repterm/src/recording/recorder.ts`)：  
-   - `asciinema rec --command "tmux new -s <session>" <cast>` 开启录制；`stop()` 发 SIGTERM。  
-   - CLI record 模式前置 `checkDependencies`（`packages/repterm/src/utils/dependencies.ts`）。
+- 核心：`packages/plugin-kubectl/src/index.ts`
+- Matcher：`packages/plugin-kubectl/src/matchers.ts`
+- 示例：`packages/plugin-kubectl/examples/*.ts`
 
-## 3. API/插件层
-1. API 入口 `packages/repterm/src/index.ts` 输出：  
-   - 核心 DSL (`test`, `expect`, `describe`, `step`, hooks)。  
-   - Runner 类型定义、Plugin 工厂。  
-   - 把 `step`/`describe` 附加到 `test`.
+插件方法涵盖资源 CRUD、wait、rollout、watch、port-forward、events/nodes/cp，并扩展 `toHaveReadyReplicas`、`toHaveStatusField` 等 matcher。
 
-2. 插件机制 (`packages/repterm/src/plugin/index.ts`, `withPlugins.ts`)：  
-   - `definePlugin` 描述 `setup()`，可返回 `methods`、`context`、`hooks`。  
-   - `PluginRuntime.initialize` 收集插件输出，注入到 `AugmentedTestContext`.  
-   - `createTestWithPlugins` & `describeWithPlugins` 包装 `test`/`describe`，自动执行插件 hooks。
+## 6. 代码导航建议
 
-3. Kubectl 插件示例：  
-   - `packages/plugin-kubectl/src/index.ts` 定义 kubectl 操作、上下文、Rollout/PortForward API。  
-   - `packages/plugin-kubectl/src/matchers.ts` 注册 `expect` 扩展（`toBeRunning`、`toExistInCluster` 等）。  
-   - 示例脚本在 `packages/plugin-kubectl/examples/*.ts`。
-
-## 4. Reporter & Artifact
-- Reporter (`packages/repterm/src/cli/reporter.ts`)：以 Vitest 风格打印 suite/test，支持慢测试阈值、失败详情。  
-- ArtifactManager (`packages/repterm/src/runner/artifacts.ts`)：  
-  - `init()` 创建 `artifacts/<runId>/`；  
-  - 提供 `getCastPath/getLogPath/getSnapshotPath`；  
-  - Scheduler 中每个 worker 会获取独立 runId，防止录制/日志冲突。
-
-## 5. 参考路径速查
-- `packages/repterm/src/api/*`：DSL、断言、hooks。  
-- `packages/repterm/src/runner/*`：config/filter/loader/runner/scheduler/worker。  
-- `packages/repterm/src/terminal/*`：session、terminal 实现。  
-- `packages/repterm/src/recording/*`：录制工具。  
-- `packages/repterm/src/utils/*`：依赖检测、计时。  
-- `packages/repterm/tests/unit/*.test.ts`：每个模块对应的单测。  
-- `packages/repterm/examples/*.ts`：端到端示例。
-
----
+- CLI/执行流：`packages/repterm/src/cli/index.ts`
+- 过滤逻辑：`packages/repterm/src/runner/filter.ts`
+- 生命周期：`packages/repterm/src/runner/runner.ts`
+- 终端实现：`packages/repterm/src/terminal/terminal.ts`
+- 插件系统：`packages/repterm/src/plugin/index.ts`
+- 单测入口：`packages/repterm/tests/unit/*.test.ts`
 
 ## See Also
 
-- [runner-pipeline.md](runner-pipeline.md) - Runner 执行流程详解
-- [terminal-modes.md](terminal-modes.md) - 终端执行模式
-- [api-cheatsheet.md](api-cheatsheet.md) - API 速查表
+- [runner-pipeline.md](runner-pipeline.md)
+- [terminal-modes.md](terminal-modes.md)
+- [api-cheatsheet.md](api-cheatsheet.md)

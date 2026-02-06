@@ -1,83 +1,85 @@
 # 单元测试矩阵
 
-> 运行全部：`bun test packages/repterm/tests`  
-> 运行单个文件：`bun test packages/repterm/tests/unit/<file>.test.ts`
+> 全量：`bun test packages/repterm/tests/unit`  
+> 单文件：`bun test packages/repterm/tests/unit/<file>.test.ts`
 
-## 优先级说明
+## 1. 优先级约定
 
-| 标记 | 含义 | 运行时机 |
-|------|------|----------|
-| 🔴 P0 | 核心功能 | 每次提交必须通过 |
-| 🟡 P1 | 重要功能 | 相关模块修改时运行 |
-| 🟢 P2 | 辅助功能 | 完整测试时运行 |
+| 标记 | 含义 | 建议 |
+| --- | --- | --- |
+| 🔴 P0 | 核心回归 | 每次改动都优先跑 |
+| 🟡 P1 | 模块回归 | 改到对应模块时跑 |
+| 🟢 P2 | 扩展/边界 | 完整回归时跑 |
 
-## 测试文件矩阵
+## 2. 文件矩阵（按当前仓库）
 
-| 优先级 | 测试文件 | 覆盖模块/要点 | 常见触发场景 |
-| --- | --- | --- | --- |
-| 🔴 P0 | `terminal.test.ts` | `Terminal` run/CommandResult、pane 计数、close | 终端执行逻辑变动 |
-| 🔴 P0 | `expect.test.ts` | `TerminalExpect` / `CommandResultExpect` / `AssertionError` | 添加新 matcher 或修改 expect 输出 |
-| 🔴 P0 | `runner-lifecycle.test.ts` | `runSuite` 洋葱执行顺序、context 传递 | beforeAll/afterAll 行为修改 |
-| 🔴 P0 | `hooks.test.ts` | hooksRegistry 各阶段（lazy fixture、beforeAll/afterAll 继承） | 变更 fixture 策略或 onion 逻辑 |
-| 🟡 P1 | `config.test.ts` | `loadConfig/getDefaultConfig`，含边界验证（超时、workers） | 修改默认超时/并行策略或 CLI 配置 |
-| 🟡 P1 | `loader.test.ts` | `discoverTests/isTestFile/filterSuites/filterTests` | 自定义测试搜索模式、目录支持 |
-| 🟡 P1 | `recorder.test.ts` | `Recorder` 生命周期、asciinema 检查 | 录制流程或 recorder API 改动 |
-| 🟡 P1 | `session.test.ts` | `TerminalSession` start/write/resize/kill | 变更底层 PTY 实现 |
-| 🟡 P1 | `registry.test.ts` | TestRegistry：suite stack、文件级 suite、clear/reset | 改写注册流程 |
-| 🟡 P1 | `describe.test.ts` | `describe()` 嵌套 suite、ID 管理、默认 suite 重置 | 修改 describe/registry 行为 |
-| 🟡 P1 | `reporter.test.ts` | Reporter 输出、summary、recording path 显示 | 调整 reporter 样式或新增字段 |
-| 🟡 P1 | `artifacts.test.ts` | `ArtifactManager` run 目录、cast/log/snapshot 路径、`ensureDir` | 调整 artifacts 结构或新增 artifact 类型 |
-| 🟢 P2 | `index.test.ts` | `src/index.ts` 导出完整性、`test.step/describe` 挂载 | 增删公共导出 |
-| 🟢 P2 | `dependencies.test.ts` | `checkCommand/checkDependencies` 行为 | 录制依赖检测报错、跨平台命令支持 |
-| 🟢 P2 | `steps.test.ts` | `step/getSteps/clearSteps` | step API 行为/错误记录调整 |
-| 🟢 P2 | `describe-steps.test.ts` | describe/step 基础示例（虚拟数据） | 初次验证 DSL 输出或示例文档 |
-| 🟢 P2 | `runner-streaming.test.ts` | `runSuite` `onResult` 流式回调 | 需要确保 streaming 回调时序 |
-| 🟢 P2 | `parallel-scheduler.test.ts` | Scheduler 构造与单 worker 错误 | 并行调度入口改动 |
-| 🟢 P2 | `scheduler.test.ts` | Scheduler 分配/聚合占位测试（后续真实实现可扩展） | 更新 scheduler 算法时同步 |
-| 🟢 P2 | `timing.test.ts` | `Timer/measure/formatDuration/sleep` | timing util 改动 |
+| 优先级 | 文件 | 主要覆盖 |
+| --- | --- | --- |
+| 🔴 P0 | `terminal.test.ts` | `terminal.run/create/close`、模式切换、输出行为 |
+| 🔴 P0 | `expect.test.ts` | 命令结果/终端 matcher 行为 |
+| 🔴 P0 | `hooks.test.ts` | fixture 懒加载、before/after 生命周期 |
+| 🔴 P0 | `runner-lifecycle.test.ts` | 洋葱模型、suite/context 继承 |
+| 🟡 P1 | `config.test.ts` | 配置合并与边界值 |
+| 🟡 P1 | `loader.test.ts` | 测试发现、setup 加载、过滤助手 |
+| 🟡 P1 | `reporter.test.ts` | 流式输出与汇总展示 |
+| 🟡 P1 | `artifacts.test.ts` | run 目录与 cast/log/snapshot 路径 |
+| 🟡 P1 | `session.test.ts` | PTY session 生命周期 |
+| 🟡 P1 | `recorder.test.ts` | asciinema recorder 生命周期 |
+| 🟡 P1 | `registry.test.ts` | suite 注册栈、文件级 suite |
+| 🟡 P1 | `describe.test.ts` | describe 嵌套与选项继承 |
+| 🟢 P2 | `index.test.ts` | 入口导出完整性 |
+| 🟢 P2 | `steps.test.ts` | `test.step` 记录与清理 |
+| 🟢 P2 | `describe-steps.test.ts` | describe + step 组合行为 |
+| 🟢 P2 | `runner-streaming.test.ts` | `onResult` 流式回调 |
+| 🟢 P2 | `parallel-scheduler.test.ts` | 并行调度边界 |
+| 🟢 P2 | `scheduler.test.ts` | scheduler 聚合路径 |
+| 🟢 P2 | `dependencies.test.ts` | 录制依赖检测 |
+| 🟢 P2 | `timing.test.ts` | timer/sleep/formatDuration |
+| 🟢 P2 | `output-capture-formula.test.ts` | 录制输出截取公式 |
 
-## 快速冒烟命令
+## 3. 场景化最小回归
+
+### 3.1 终端与录制相关
 
 ```bash
-# P0 核心测试（约 10s）
 bun test packages/repterm/tests/unit/terminal.test.ts \
-         packages/repterm/tests/unit/expect.test.ts \
-         packages/repterm/tests/unit/runner-lifecycle.test.ts \
-         packages/repterm/tests/unit/hooks.test.ts
-
-# P0 + P1 测试（约 30s）
-bun test packages/repterm/tests/unit/{terminal,expect,runner-lifecycle,hooks,config,loader,recorder,session}.test.ts
-```
-
-## 场景化运行建议
-
-### 终端/录制相关改动
-```bash
-bun test packages/repterm/tests/unit/terminal.test.ts \
-         packages/repterm/tests/unit/recorder.test.ts \
          packages/repterm/tests/unit/session.test.ts \
-         packages/repterm/tests/unit/runner-lifecycle.test.ts
+         packages/repterm/tests/unit/recorder.test.ts \
+         packages/repterm/tests/unit/output-capture-formula.test.ts
 ```
 
-### 插件/DSL 改动
+### 3.2 Runner / CLI / Hooks 相关
+
 ```bash
-bun test packages/repterm/tests/unit/expect.test.ts \
+bun test packages/repterm/tests/unit/runner-lifecycle.test.ts \
          packages/repterm/tests/unit/hooks.test.ts \
-         packages/repterm/tests/unit/registry.test.ts \
-         packages/repterm/tests/unit/index.test.ts
-```
-
-### CLI/Runner 改动
-```bash
-bun test packages/repterm/tests/unit/config.test.ts \
          packages/repterm/tests/unit/loader.test.ts \
          packages/repterm/tests/unit/reporter.test.ts \
          packages/repterm/tests/unit/artifacts.test.ts
 ```
 
----
+### 3.3 DSL / 断言 / 导出相关
+
+```bash
+bun test packages/repterm/tests/unit/expect.test.ts \
+         packages/repterm/tests/unit/describe.test.ts \
+         packages/repterm/tests/unit/steps.test.ts \
+         packages/repterm/tests/unit/index.test.ts
+```
+
+## 4. 完整回归建议
+
+```bash
+bun test packages/repterm/tests/unit
+```
+
+若改动涉及 `plugin-kubectl` 文档或类型，建议额外跑一次示例冒烟：
+
+```bash
+bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
+```
 
 ## See Also
 
-- [runner-pipeline.md](runner-pipeline.md) - Runner 执行流程详解
-- [troubleshooting.md](troubleshooting.md) - 测试失败排查指南
+- [runner-pipeline.md](runner-pipeline.md)
+- [troubleshooting.md](troubleshooting.md)
