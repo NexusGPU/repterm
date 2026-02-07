@@ -103,7 +103,7 @@ export async function runSuite(
 }
 
 /**
- * 获取从 suite 继承的 record 配置
+ * Get record config inherited from suite
  */
 function getInheritedRecordConfig(suite: TestSuite): boolean | undefined {
   if (suite.options?.record !== undefined) {
@@ -135,22 +135,22 @@ export async function runTest(
   const startTime = Date.now();
   const { config, artifactManager, onResult, onTestStart } = options;
 
-  // 确定执行模式：
-  // 1. testRecordConfig: 测试级别或 suite 级别的 record 配置
-  // 2. cliRecordMode: CLI --record 标志
-  // 3. shouldRecord: 只有 CLI 和 test 都启用时才完整录制（asciinema + tmux + 打字效果）
-  // 4. shouldUsePtyOnly: test 启用但 CLI 未启用时使用 PTY-only（无录制、无打字效果）
+  // Execution mode:
+  // 1. testRecordConfig: test- or suite-level record
+  // 2. cliRecordMode: CLI --record
+  // 3. shouldRecord: full recording (asciinema + tmux + typing) only when both CLI and test enable it
+  // 4. shouldUsePtyOnly: test has record but CLI does not -> PTY-only (no recording, no typing)
   const testRecordConfig = testCase.options?.record ?? getInheritedRecordConfig(suite);
   const cliRecordMode = config.record?.enabled ?? false;
-  const shouldRecord = cliRecordMode && testRecordConfig;  // 完整录制模式
-  const shouldUsePtyOnly = testRecordConfig && !cliRecordMode;  // PTY-only 模式
+  const shouldRecord = cliRecordMode && testRecordConfig;  // Full recording
+  const shouldUsePtyOnly = testRecordConfig && !cliRecordMode;  // PTY-only
 
   // Get recording path for this test (only in recording mode)
   const recordingPath = shouldRecord
     ? artifactManager.getCastPath(testCase.id)
     : undefined;
 
-  // 在 hooks 运行前通知测试即将开始，确保 suite 名称先于 hook 输出打印
+  // Notify before hooks so suite name prints before hook output
   onTestStart?.({ suitePath, testName: testCase.name });
 
   // Create terminal for test

@@ -1,16 +1,16 @@
 /**
- * 测试场景 3: 资源不足场景
+ * Test Scenario 3: Insufficient Resource Scenario
  *
- * 验证当请求的 GPU 资源超过可用量时：
- * - TensorFusionWorkload 状态应为 Pending
- * - replicas 应为 0
- * - GPU 可用资源不应减少
+ * Verify that when requested GPU resources exceed available amount:
+ * - TensorFusionWorkload status should be Pending
+ * - replicas should be 0
+ * - GPU available resources should not decrease
  *
- * 录制效果：
- * - 主窗格：持续 watch workload 状态变化
- * - 新窗格：执行查询和验证命令
+ * Recording effect:
+ * - Main pane: continuously watch workload status changes
+ * - New pane: execute query and verification commands
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/03-insufficient.ts
  */
 
@@ -29,16 +29,16 @@ import {
 
 const WORKLOAD_NAME = 'test-workload-insufficient';
 
-describe('测试场景 3: 资源不足场景', { record: true }, () => {
-    test('GPU 资源不足时 Workload 行为验证', async (ctx) => {
+describe('Test Scenario 3: Insufficient Resource Scenario', { record: true }, () => {
+    test('GPU resource insufficient Workload behavior verification', async (ctx) => {
         const { kubectl } = ctx.plugins;
         const { terminal } = ctx;
         let gpuName: string;
         let initialTflops: string;
         let initialVram: string;
 
-        // ===== Step 1: 记录初始状态 =====
-        await step('获取测试 GPU', {
+        // ===== Step 1: Record initial state =====
+        await step('Acquire test GPU', {
             showStepTitle: false,
             typingSpeed: 60,
             pauseAfter: 1000
@@ -46,7 +46,7 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
             gpuName = await getFirstGpuName(kubectl);
         });
 
-        await step('记录初始可用资源', {
+        await step('Record initial available resources', {
             typingSpeed: 60,
             pauseAfter: 1500
         }, async () => {
@@ -55,13 +55,13 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
             initialVram = available.vram;
         });
 
-        // ===== Step 2: 创建超量资源请求的 Workload（核心操作）=====
-        await step('创建超量资源请求的 Workload', {
+        // ===== Step 2: Create Workload with excessive resource request (core operation) =====
+        await step('Create Workload with excessive resource request', {
             showStepTitle: false,
             typingSpeed: 100,
             pauseAfter: 2000
         }, async () => {
-            // 请求 100 TFlops 和 100Gi VRAM - 远超任何单 GPU 的容量
+            // Request 100 TFlops and 100Gi VRAM - far exceeds any single GPU capacity
             const yaml = workloadYaml(WORKLOAD_NAME, {
                 tflopsRequest: '100000m',  // 100 TFlops
                 tflopsLimit: '100000m',
@@ -73,32 +73,32 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
             await expect(result).toBeSuccessful();
         });
 
-        // ===== Step 3: 主窗格 watch，新窗格验证 =====
-        await step('观察 Workload 状态并验证', {
+        // ===== Step 3: Watch in main pane, verify in new pane =====
+        await step('Watch Workload status and verify', {
             showStepTitle: false,
             pauseAfter: 2000
         }, async () => {
-            // 在主窗格启动 watch（等待命令输入完成后返回）
+            // Start watch in main pane (returns after command input completes)
             const watchProc = await kubectl.get('tensorfusionworkload', WORKLOAD_NAME, { watch: true });
 
-            // 创建新终端（自动携带 plugins）
+            // Create new terminal (automatically carries plugins)
             const terminal2 = await terminal.create();
             const kubectl2 = terminal2.plugins.kubectl as KubectlMethods;
 
-            // 在新窗格执行验证命令
-            // 检查状态不是 Running
+            // Execute verification commands in new pane
+            // Check status is not Running
             const status = await kubectl2.getJsonPath<{
                 phase?: string;
                 replicas?: number;
             }>('tensorfusionworkload', WORKLOAD_NAME, '.status');
             expect(status?.phase).not.toBe('Running');
 
-            // 检查 GPU 资源未被分配
+            // Check GPU resources not allocated
             const currentAvailable = await getGpuAvailable(kubectl2, gpuName);
             expect(currentAvailable.tflops).toBe(initialTflops);
             expect(currentAvailable.vram).toBe(initialVram);
 
-            // 获取事件信息
+            // Get event information
             await kubectl2.get<Array<{
                 reason: string;
                 message: string;
@@ -108,15 +108,15 @@ describe('测试场景 3: 资源不足场景', { record: true }, () => {
                 jqFilter: '[.items[] | {reason: .reason, message: .message, type: .type}]'
             });
 
-            // 观察一段时间后关闭
+            // Observe for a period then close
             await sleep(3000);
 
-            // 中断 watch
+            // Interrupt watch
             await watchProc.interrupt();
         });
 
-        // ===== Step 4: 清理 =====
-        await step('删除 TensorFusionWorkload', {
+        // ===== Step 4: Cleanup =====
+        await step('Delete TensorFusionWorkload', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000

@@ -1,13 +1,13 @@
 /**
- * 示例 1: 基础 Kubectl 操作
+ * Example 1: Basic Kubectl Operations
  *
- * 演示 kubectl 插件的基础 API：apply, delete, get, exists, waitForPod
+ * Demonstrates the basic kubectl plugin API: apply, delete, get, exists, waitForPod
  *
- * 运行方式:
+ * Running instructions:
  *   bun run repterm packages/plugin-kubectl/examples/01-basic-kubectl.ts
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
+ * Prerequisites:
+ *   - kubectl is configured and connected to a Kubernetes cluster
  */
 
 import {
@@ -18,14 +18,14 @@ import {
 } from '../../repterm/src/index.js';
 import { kubectlPlugin } from '../src/index.js';
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-// 测试用 Pod YAML
+// Pod YAML for testing
 const nginxPodYaml = `
 apiVersion: v1
 kind: Pod
@@ -42,45 +42,45 @@ spec:
     - containerPort: 80
 `;
 
-describe('基础 Kubectl API', { record: true }, () => {
-    // ===== apply - 创建资源 =====
-    test('apply - 创建 Pod', async (ctx) => {
+describe('Basic Kubectl API', { record: true }, () => {
+    // ===== apply - Create resources =====
+    test('apply - Create Pod', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 apply API 创建 Pod
+        // Use apply API to create Pod
         await kubectl.apply(nginxPodYaml);
     });
 
-    // ===== waitForPod - 等待 Pod 就绪 =====
-    test('waitForPod - 等待 Pod Running', async (ctx) => {
+    // ===== waitForPod - Wait for Pod to be ready =====
+    test('waitForPod - Wait for Pod Running', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 waitForPod API 等待 Pod 进入 Running 状态
+        // Use waitForPod API to wait for Pod to enter Running status
         await kubectl.waitForPod('nginx-test', 'Running', 60000);
     });
 
-    // ===== exists - 检查资源是否存在 =====
-    test('exists - 检查 Pod 存在', async (ctx) => {
+    // ===== exists - Check if resource exists =====
+    test('exists - Check if Pod exists', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 exists API 检查资源
+        // Use exists API to check resource
         const podExists = await kubectl.exists('pod', 'nginx-test');
         if (!podExists) {
             throw new Error('Pod should exist');
         }
 
-        // 检查不存在的资源
+        // Check if non-existent resource exists
         const notExists = await kubectl.exists('pod', 'non-existent-pod');
         if (notExists) {
             throw new Error('Non-existent pod should not exist');
         }
     });
 
-    // ===== get - 获取资源信息 =====
-    test('get - 获取 Pod 信息', async (ctx) => {
+    // ===== get - Get resource information =====
+    test('get - Get Pod information', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 get API 获取资源 JSON
+        // Use get API to retrieve resource JSON
         const pod = await kubectl.get<{
             metadata: { name: string; labels: Record<string, string> };
             status: { phase: string };
@@ -91,23 +91,23 @@ describe('基础 Kubectl API', { record: true }, () => {
         }
     });
 
-    // ===== run - 执行原始命令 =====
-    test('run - 执行原始 kubectl 命令', async (ctx) => {
+    // ===== run - Execute raw kubectl command =====
+    test('run - Execute raw kubectl command', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 run API 执行任意 kubectl 命令
+        // Use run API to execute arbitrary kubectl command
         await kubectl.run('get pod nginx-test -o wide');
     });
 
-    // ===== delete - 删除资源 =====
-    test('delete - 删除 Pod', async (ctx) => {
+    // ===== delete - Delete resources =====
+    test('delete - Delete Pod', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 delete API 删除资源
+        // Use delete API to delete resource
         await kubectl.delete('pod', 'nginx-test', { force: true });
 
-        // 验证已删除
-        // 注意：删除可能需要一些时间
+        // Verify deletion
+        // Note: deletion may take some time
         await new Promise(resolve => setTimeout(resolve, 2000));
     });
 });

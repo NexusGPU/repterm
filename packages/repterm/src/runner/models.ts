@@ -3,23 +3,23 @@
  */
 
 /**
- * test() 函数的配置选项
+ * Configuration options for test() function
  */
 export interface TestOptions {
-  /** 标记为录制测试，仅在 --record 模式下运行 */
+  /** Mark as recording test, runs only in --record mode */
   record?: boolean;
-  /** 测试超时时间（毫秒） */
+  /** Test timeout duration (milliseconds) */
   timeout?: number;
-  // 未来可扩展：skip, only, retry 等
+  // Future extensions: skip, only, retry, etc.
 }
 
 /**
- * describe() 函数的配置选项
+ * Configuration options for describe() function
  */
 export interface DescribeOptions {
-  /** 标记为录制测试套件，内部所有测试默认继承此配置 */
+  /** Mark as recording test suite, all internal tests inherit this configuration by default */
   record?: boolean;
-  // 未来可扩展：timeout 等
+  // Future extensions: timeout, etc.
 }
 
 /**
@@ -37,7 +37,7 @@ export interface TestSuite {
   suites?: TestSuite[]; // Nested suites for nested describe() blocks
   parent?: TestSuite; // Parent suite for nested describe() blocks
   config: SuiteConfig;
-  options?: DescribeOptions; // describe() 的配置选项
+  options?: DescribeOptions; // Configuration options for describe()
   beforeAll?: NamedHookEntry[];   // Suite-level setup hooks
   afterAll?: NamedHookEntry[];    // Suite-level teardown hooks
 }
@@ -63,7 +63,7 @@ export interface TestCase {
   timeout?: number;
   fixtures?: Record<string, unknown>;
   fn: TestFunction;
-  options?: TestOptions; // test() 的配置选项
+  options?: TestOptions; // Configuration options for test()
 }
 
 export type TestFunction = (context: TestContext) => Promise<void>;
@@ -74,177 +74,177 @@ export interface TestContext {
 }
 
 /**
- * 命令执行结果
+ * Command execution result
  */
 export interface CommandResult {
-  /** 命令退出码（0 表示成功） */
+  /** Exit code (0 = success) */
   code: number;
 
-  /** 标准输出 */
+  /** Standard output */
   stdout: string;
 
-  /** 标准错误 */
+  /** Standard error */
   stderr: string;
 
-  /** 混合输出（stdout + stderr 合并） */
+  /** Combined output (stdout + stderr) */
   output: string;
 
-  /** 命令执行时长（毫秒） */
+  /** Command execution duration (milliseconds) */
   duration: number;
 
-  /** 原始命令字符串 */
+  /** Original command string */
   command: string;
 
-  /** 是否成功（code === 0） */
+  /** Whether successful (code === 0) */
   readonly successful: boolean;
 }
 
 /**
- * PTY 进程控制器
- * 实现 PromiseLike，既可以作为 Promise 使用（await 自动调用 wait()），也可以作为控制器使用
+ * PTY process controller
+ * Implements PromiseLike, can be used both as Promise (await automatically calls wait()) and as controller
  */
 export interface PTYProcess extends PromiseLike<CommandResult> {
-  /** 等待指定文本出现 */
+  /** Wait for specified text to appear */
   expect(text: string, options?: { timeout?: number }): Promise<void>;
 
-  /** 发送输入到进程（自动追加换行符） */
+  /** Send input to process (automatically appends newline) */
   send(input: string): Promise<void>;
 
-  /** 发送原始输入（不追加换行符） */
+  /** Send raw input (no newline appended) */
   sendRaw(input: string): Promise<void>;
 
-  /** 等待命令完成并返回结果 */
+  /** Wait for command to complete and return result */
   wait(options?: { timeout?: number }): Promise<CommandResult>;
 
-  /** 启动命令执行，等待输入完成（不等待命令执行完成） */
+  /** Start command execution, wait for input completion (don't wait for command to finish) */
   start(): Promise<void>;
 
-  /** 发送 Ctrl+C */
+  /** Send Ctrl+C */
   interrupt(): Promise<void>;
 
-  /** Promise catch 方法 */
+  /** Promise catch method */
   catch<TResult = never>(
     onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
   ): Promise<CommandResult | TResult>;
 
-  /** Promise finally 方法 */
+  /** Promise finally method */
   finally(onfinally?: (() => void) | null): Promise<CommandResult>;
 }
 
 /**
- * run() 方法选项
+ * run() method options
  */
 export interface RunOptions {
-  /** 命令超时时间（毫秒），默认：30000 */
+  /** Command timeout duration (milliseconds), default: 30000 */
   timeout?: number;
 
-  /** 环境变量（可选） */
+  /** Environment variables (optional) */
   env?: Record<string, string>;
 
-  /** 工作目录（可选） */
+  /** Working directory (optional) */
   cwd?: string;
 
-  /** 
-   * 标记为交互式命令，使用 PTY 执行
-   * 交互式模式支持 expect/send 方法，但 exitCode 不可靠
+  /**
+   * Mark as interactive command, execute using PTY
+   * Interactive mode supports expect/send methods, but exitCode may be unreliable
    */
   interactive?: boolean;
 
   /**
-   * 静默模式：即使在录制模式下也使用 Bun.spawn 执行
-   * 用于需要精确解析输出的场景（如 JSON 解析）
-   * 注意：此模式下命令不会在录制中显示
+   * Silent mode: use Bun.spawn even in recording mode
+   * For scenarios requiring precise output parsing (e.g., JSON parsing)
+   * Note: Commands won't be displayed in recording in this mode
    */
   silent?: boolean;
 
   /**
-   * 录制模式：打字速度 (ms/字符)
-   * 默认值：80ms，设为 0 则直接写入不打字
+   * Recording mode: typing speed (ms/character)
+   * Default: 80ms, set to 0 to write directly without typing
    */
   typingSpeed?: number;
 
   /**
-   * 录制模式：命令执行后暂停时间 (ms)
-   * 用于让观众有时间阅读输出
+   * Recording mode: pause duration after command execution (ms)
+   * Gives viewers time to read the output
    */
   pauseAfter?: number;
 
   /**
-   * 录制模式：命令执行前暂停时间 (ms)
+   * Recording mode: pause duration before command execution (ms)
    */
   pauseBefore?: number;
 }
 
 /**
- * 插件工厂类型 - 用于为新终端创建插件实例
+ * Plugin factory type - creates plugin instances for new terminals
  */
-export type PluginFactory<TPlugins = Record<string, unknown>> = (
+export type PluginFactory<TPlugins extends Record<string, unknown> = Record<string, unknown>> = (
   terminal: TerminalAPI
 ) => TPlugins;
 
 /**
- * 带插件的终端接口
+ * Terminal interface with plugins
  */
-export interface TerminalWithPlugins<TPlugins = Record<string, unknown>> extends TerminalAPI {
-  /** 插件实例（与主终端相同配置） */
+export interface TerminalWithPlugins<TPlugins extends Record<string, unknown> = Record<string, unknown>> extends TerminalAPI {
+  /** Plugin instance (same configuration as main terminal) */
   plugins: TPlugins;
 }
 
 export interface TerminalAPI {
   /**
-   * 执行命令，返回 PTYProcess（可 await 或使用控制器方法）
-   * 
-   * 用法：
-   * - 非交互式：直接 await，获取 CommandResult
+   * Execute command, returns PTYProcess (can await or use controller methods)
+   *
+   * Usage:
+   * - Non-interactive: directly await, get CommandResult
    *   `const result = await terminal.run('echo hello');`
-   * 
-   * - 交互式：不 await，使用控制器方法
+   *
+   * - Interactive: don't await, use controller methods
    *   `const proc = terminal.run('vim file.txt');`
    *   `await proc.expect('~');`
    *   `await proc.send(':q');`
    *   `const result = await proc;`
-   * 
-   * @param command - 要执行的命令
-   * @param options - 可选配置
+   *
+   * @param command - Command to execute
+   * @param options - Optional configuration
    */
   run(command: string, options?: RunOptions): PTYProcess;
 
-  /** 发送输入到终端 */
+  /** Send input to terminal */
   send(text: string): Promise<void>;
 
-  /** 等待指定文本出现 */
+  /** Wait for specified text to appear */
   waitForText(text: string, options?: WaitOptions): Promise<void>;
 
-  /** 获取当前终端输出快照 */
+  /** Get current terminal output snapshot */
   snapshot(): Promise<string>;
 
-  /** 关闭终端 */
+  /** Close terminal */
   close(): Promise<void>;
 
-  /** 
-   * 创建新的终端实例（多终端测试）
-   * 如果设置了插件工厂，返回的终端会自动携带 plugins 属性
+  /**
+   * Create new terminal instance (multi-terminal testing)
+   * If plugin factory is set, returned terminal automatically includes plugins property
    */
-  create<TPlugins = Record<string, unknown>>(): Promise<TerminalWithPlugins<TPlugins>>;
+  create<TPlugins extends Record<string, unknown> = Record<string, unknown>>(): Promise<TerminalWithPlugins<TPlugins>>;
 
-  /** 检查是否处于录制模式 */
+  /** Check if in recording mode */
   isRecording?(): boolean;
 
-  /** 检查是否处于 PTY 模式（包括录制模式和 ptyOnly 模式） */
+  /** Check if in PTY mode (includes recording mode and ptyOnly mode) */
   isPtyMode?(): boolean;
 
-  /** 
-   * 设置插件工厂（用于 create() 自动注入插件）
-   * @internal 由插件系统调用
+  /**
+   * Set plugin factory (for auto-injection into create())
+   * @internal Called by plugin system
    */
-  setPluginFactory?<TPlugins>(factory: PluginFactory<TPlugins>): void;
+  setPluginFactory?<TPlugins extends Record<string, unknown>>(factory: PluginFactory<TPlugins>): void;
 }
 
 export interface WaitOptions {
   timeout?: number;
-  /** 
-   * 是否移除 ANSI 转义序列后再匹配文本（录制模式下默认 true）
-   * 设为 false 可保留原始输出，用于测试 ANSI 相关功能
+  /**
+   * Whether to remove ANSI escape sequences before matching text (default true in recording mode)
+   * Set to false to preserve raw output for testing ANSI-related features
    */
   stripAnsi?: boolean;
 }

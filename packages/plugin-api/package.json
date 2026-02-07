@@ -1,0 +1,31 @@
+{
+  "name": "repterm-api",
+  "version": "0.1.0",
+  "description": "Plugin and matcher API for repterm - use this to build repterm plugins without depending on repterm",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "repterm",
+    "plugin",
+    "testing",
+    "api"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}

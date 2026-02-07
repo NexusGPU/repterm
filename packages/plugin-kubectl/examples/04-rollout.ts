@@ -1,13 +1,13 @@
 /**
- * 示例 4: 发布管理 (Rollout)
+ * Example 4: Rollout Management
  *
- * 演示 kubectl 插件的 rollout API：status, history, restart, undo, pause, resume
+ * Demonstrates kubectl plugin's rollout API: status, history, restart, undo, pause, resume
  *
- * 运行方式:
+ * Run:
  *   bun run repterm packages/plugin-kubectl/examples/04-rollout.ts
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
+ * Prerequisites:
+ *   - kubectl is configured and connected to Kubernetes cluster
  */
 
 import {
@@ -17,14 +17,14 @@ import {
 } from '../../repterm/src/index.js';
 import { kubectlPlugin } from '../src/index.js';
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-// 测试用 Deployment
+// Test Deployment
 const appDeploymentYaml = `
 apiVersion: apps/v1
 kind: Deployment
@@ -49,23 +49,23 @@ spec:
         - containerPort: 80
 `;
 
-describe('发布管理 (Rollout) API', () => {
-    // 准备测试环境
-    test('准备: 创建测试 Deployment', async (ctx) => {
+describe('Rollout Management API', () => {
+    // Setup test environment
+    test('Setup: Create test Deployment', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.apply(appDeploymentYaml);
         await kubectl.wait('deployment', 'app-deploy', 'Available', { timeout: 120000 });
     });
 
-    // ===== rollout.status - 获取发布状态 =====
-    test('rollout.status - 获取发布状态', async (ctx) => {
+    // ===== rollout.status - Get rollout status =====
+    test('rollout.status - Get rollout status', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         const status = await kubectl.rollout.status('deployment', 'app-deploy');
     });
 
-    // ===== rollout.history - 获取发布历史 =====
-    test('rollout.history - 获取发布历史', async (ctx) => {
+    // ===== rollout.history - Get rollout history =====
+    test('rollout.history - Get rollout history', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         const history = await kubectl.rollout.history('deployment', 'app-deploy');
@@ -73,34 +73,34 @@ describe('发布管理 (Rollout) API', () => {
         }
     });
 
-    // ===== rollout.restart - 重启 Deployment =====
-    test('rollout.restart - 重启 Deployment', async (ctx) => {
+    // ===== rollout.restart - Restart Deployment =====
+    test('rollout.restart - Restart Deployment', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.rollout.restart('deployment', 'app-deploy');
 
-        // 等待重启完成
+        // Wait for restart to complete
         await kubectl.wait('deployment', 'app-deploy', 'Available', { timeout: 120000 });
     });
 
-    // ===== rollout.pause / resume - 暂停/恢复发布 =====
-    test('rollout.pause - 暂停发布', async (ctx) => {
+    // ===== rollout.pause / resume - Pause/Resume rollout =====
+    test('rollout.pause - Pause rollout', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.rollout.pause('deployment', 'app-deploy');
     });
 
-    test('rollout.resume - 恢复发布', async (ctx) => {
+    test('rollout.resume - Resume rollout', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.rollout.resume('deployment', 'app-deploy');
     });
 
-    // 触发新版本以便测试回滚
-    test('触发镜像更新', async (ctx) => {
+    // Trigger new version for rollback testing
+    test('Trigger image update', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 patch 更新镜像
+        // Use patch to update image
         await kubectl.patch('deployment', 'app-deploy', {
             spec: {
                 template: {
@@ -114,7 +114,7 @@ describe('发布管理 (Rollout) API', () => {
             },
         });
 
-        // 添加变更原因注解
+        // Add change cause annotation
         await kubectl.annotate('deployment', 'app-deploy', {
             'kubernetes.io/change-cause': 'Update to nginx:1.21',
         });
@@ -122,8 +122,8 @@ describe('发布管理 (Rollout) API', () => {
         await kubectl.wait('deployment', 'app-deploy', 'Available', { timeout: 120000 });
     });
 
-    // ===== rollout.undo - 回滚 =====
-    test('rollout.undo - 回滚到上一版本', async (ctx) => {
+    // ===== rollout.undo - Rollback =====
+    test('rollout.undo - Rollback to previous version', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.rollout.undo('deployment', 'app-deploy');
@@ -131,10 +131,10 @@ describe('发布管理 (Rollout) API', () => {
         await kubectl.wait('deployment', 'app-deploy', 'Available', { timeout: 120000 });
     });
 
-    test('rollout.undo - 回滚到指定版本', async (ctx) => {
+    test('rollout.undo - Rollback to specific version', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 获取历史，找到可用的版本
+        // Get history to find available version
         const history = await kubectl.rollout.history('deployment', 'app-deploy');
         if (history.length > 1) {
             const targetRevision = history[0].revision;
@@ -143,8 +143,8 @@ describe('发布管理 (Rollout) API', () => {
         }
     });
 
-    // 清理
-    test('清理: 删除测试 Deployment', async (ctx) => {
+    // Cleanup
+    test('Cleanup: Delete test Deployment', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.delete('deployment', 'app-deploy', { force: true });
     });

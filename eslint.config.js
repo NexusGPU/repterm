@@ -3,18 +3,26 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 
 export default [
+  {
+    ignores: [
+      'node_modules/',
+      'dist/',
+      'build/',
+      'coverage/',
+      '*.min.js',
+      'playwright/',
+    ],
+  },
   eslint.configs.recommended,
   {
-    files: ['src/**/*.ts', 'tests/**/*.ts'],
+    files: ['packages/repterm/src/**/*.ts', 'packages/repterm/tests/**/*.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: 'module',
-        project: './tsconfig.json',
       },
       globals: {
-        // Node.js globals
         console: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
@@ -26,6 +34,9 @@ export default [
         NodeJS: 'readonly',
         __dirname: 'readonly',
         __filename: 'readonly',
+        Bun: 'readonly',
+        Response: 'readonly',
+        ReadableStream: 'readonly',
       },
     },
     plugins: {
@@ -37,24 +48,24 @@ export default [
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
-          // Allow unused params in function signatures (for interfaces, types, and overrides)
           args: 'after-used',
         },
       ],
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': 'off',
-      'no-unused-vars': 'off', // Use TypeScript version instead
+      'no-unused-vars': 'off',
+      'no-undef': 'off',
+      'no-redeclare': 'off',
+      'no-control-regex': 'off',
+      'no-useless-escape': 'off',
+      'preserve-caught-error': 'off',
     },
   },
   {
-    ignores: [
-      'node_modules/',
-      'dist/',
-      'build/',
-      'coverage/',
-      '*.min.js',
-      'playwright/',
-    ],
+    files: ['**/*.d.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
   },
 ];

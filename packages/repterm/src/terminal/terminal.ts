@@ -2,9 +2,8 @@
  * Terminal API implementation
  * Provides high-level terminal interaction (start/send/wait/snapshot)
  * 
- * 执行架构：
- * - 非录制、非交互模式：使用 Bun.spawn，stdout/stderr 分离，exitCode 精确
- * - 录制或交互模式：使用 PTY，支持复杂交互，但 exitCode 不可靠
+ * Execution: non-recording/non-interactive uses Bun.spawn (separate stdout/stderr, exact exitCode);
+ * recording or interactive uses PTY (rich interaction, exitCode unreliable).
  */
 
 import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, PluginFactory, TerminalWithPlugins, CommandLog } from '../runner/models.js';
@@ -13,8 +12,7 @@ import { EventEmitter } from 'events';
 import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
 
 /**
- * 计算 tmux 输出捕获的行范围
- * 纯函数，可独立单元测试
+ * Compute tmux output capture line range. Pure function for unit testing.
  */
 export function calculateOutputRange(
   beforeCursorY: number,
@@ -30,7 +28,7 @@ export function calculateOutputRange(
 }
 
 /**
- * CommandResult 实现类，提供 successful getter
+ * CommandResult implementation with successful getter
  */
 class CommandResultImpl implements CommandResult {
   code: number;
@@ -64,12 +62,12 @@ class CommandResultImpl implements CommandResult {
 export interface TerminalConfig {
   cols?: number;
   rows?: number;
-  recording?: boolean;      // 启用录制（asciinema + tmux + 打字效果）
+  recording?: boolean;      // Enable recording (asciinema + tmux + typing)
   recordingPath?: string;
-  ptyOnly?: boolean;        // PTY-only 模式（使用 PTY 但无录制、无打字效果）
+  ptyOnly?: boolean;        // PTY-only (PTY, no recording/typing)
   tmuxSessionName?: string;  // For multi-window recording
   tmuxPaneId?: string;  // For split panes
-  promptLineCount?: number;  // 强制指定提示符行数，跳过自动检测
+  promptLineCount?: number;  // Override prompt line count, skip auto-detect
 }
 
 // Shared state for tracking pane count across Terminal and TerminalFactory
@@ -85,7 +83,7 @@ export interface SharedTerminalState {
 export class Terminal extends EventEmitter implements TerminalAPI {
   private session: TerminalSession;
   private recording: boolean;
-  private ptyOnly: boolean;  // PTY-only 模式标志
+  private ptyOnly: boolean;  // PTY-only flag
   private recordingPath?: string;
   private closed = false;
   private initialized = false;
@@ -93,21 +91,21 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private tmuxPaneId?: string;
   private sharedState: SharedTerminalState;
   private paneIndex?: number;  // Index of the tmux pane this terminal is bound to
-  private nonInteractiveOutput: string = '';  // 存储非交互模式下的命令输出
-  private commandLogs: CommandLog[] = [];      // 存储测试期间执行过的命令
-  private pluginFactory?: PluginFactory<any>;  // 插件工厂
-  public plugins?: Record<string, unknown>;  // 插件实例（为新终端设置）
+  private nonInteractiveOutput: string = '';  // Command output in non-interactive mode
+  private commandLogs: CommandLog[] = [];      // Commands run during test
+  private pluginFactory?: PluginFactory<Record<string, unknown>>;  // Plugin factory
+  public plugins?: Record<string, unknown>;  // Plugin instances (for new terminals)
 
-  // 发送 Enter 前的状态（用于输出范围捕获）
+  // State before sending Enter (for output range capture)
   private beforeEnterHistorySize: number = 0;
   private beforeEnterCursorY: number = 0;
-  // 命令的实际行数（直接从命令内容计算，最可靠）
+  // Command line count from command content (most reliable)
   private commandLineCount: number = 0;
-  // 检测到的提示符行数（默认 0，由自动检测或用户配置设置）
+  // Detected or configured prompt line count (default 0)
   private promptLineCount: number = 0;
-  // 是否使用用户配置的值（跳过自动检测）
+  // Use user-configured value (skip auto-detect)
   private promptLineCountConfigured: boolean = false;
-  // 检测到的提示符匹配 pattern
+  // Detected prompt match pattern
   private detectedPromptPattern?: RegExp;
 
   constructor(config: TerminalConfig = {}) {
@@ -121,7 +119,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     this.paneIndex = 0;  // Main terminal is pane 0
     this.nonInteractiveOutput = '';
 
-    // 如果用户配置了 promptLineCount，直接使用，不进行自动检测
+    // Use user promptLineCount and skip auto-detect
     if (config.promptLineCount !== undefined) {
       this.promptLineCount = config.promptLineCount;
       this.promptLineCountConfigured = true;
@@ -209,18 +207,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 执行命令，返回 PTYProcess
-   * 
-   * 执行模式：
-   * - 非录制、非交互（默认）：使用 Bun.spawn，stdout/stderr 分离，exitCode 精确
-   * - 录制或交互：使用 PTY，支持 expect/send，但 exitCode 返回 -1
-   * 
-   * 用法：
-   * - 直接 await: 自动调用 wait()，返回 CommandResult
-   * - 不 await: 返回 PTYProcess 控制器，可调用 expect/send/wait 等方法
-   * 
-   * @param command - 要执行的命令
-   * @param options - 可选配置，包括 interactive: true 启用交互模式
+   * Run command; returns PTYProcess.
+   * Non-recording/non-interactive: Bun.spawn, separate stdout/stderr, exact exitCode.
+   * Recording or interactive: PTY, expect/send, exitCode -1.
+   * Usage: await for CommandResult, or use controller (expect/send/wait).
+   * @param command - Command to run
+   * @param options - e.g. interactive: true
    */
   run(command: string, options: RunOptions = {}): PTYProcess {
     if (this.closed) {
@@ -236,17 +228,16 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     if (this.initialized) return;
 
     if (this.recording && this.recordingPath) {
-      // 只在用户未配置 promptLineCount 时才自动检测
+      // Auto-detect only when user did not set promptLineCount
       if (!this.promptLineCountConfigured) {
         await this.detectPromptBeforeRecording();
       }
 
-      // 生成 tmux session 名称
+      // Generate tmux session name
       const sessionName = `repterm-${Date.now().toString(36)}`;
       this.tmuxSessionName = sessionName;
 
-      // Recording mode: 使用 asciinema --command 直接启动 tmux
-      // 必须显式设置 TERM=xterm-256color，否则 asciinema 会检测父进程的终端类型
+      // Recording: asciinema --command starts tmux. Set TERM=xterm-256color explicitly.
       this.session.start({
         shell: 'asciinema',
         args: ['rec', '--command', `tmux new -s ${sessionName}`, this.recordingPath, '--overwrite'],
@@ -255,11 +246,11 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         },
       });
 
-      // 等待 tmux 启动就绪
+      // Wait for tmux to be ready
       await this.waitForTmuxReady();
 
     } else if (this.ptyOnly) {
-      // PTY-only 模式：直接启动 shell（不使用 asciinema/tmux）
+      // PTY-only: start shell directly (no asciinema/tmux)
       this.session.start();
       await this.waitForShellReady();
 
@@ -286,14 +277,14 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     while (Date.now() - startTime < timeout) {
       const output = this.session.getOutput();
-      // 检测 shell 准备好的标志（出现命令提示符）
+      // Shell ready when prompt appears
       if (output.includes('$') || output.includes('#') || output.includes('%') || output.includes('>')) {
-        await this.sleep(100);  // 额外等待确保稳定
+        await this.sleep(100);  // Extra wait for stability
         return;
       }
       await this.sleep(50);
     }
-    // 超时不报错，继续执行
+    // Timeout: do not throw, continue
   }
 
   /**
@@ -304,14 +295,14 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     while (Date.now() - startTime < timeout) {
       const output = this.session.getOutput();
-      // 检测 tmux 启动完成的标志（通常是出现命令提示符）
+      // Tmux ready when prompt appears
       if (output.includes('$') || output.includes('#') || output.includes('%')) {
-        await this.sleep(300);  // 额外等待确保稳定
+        await this.sleep(300);  // Extra wait for stability
         return;
       }
       await this.sleep(100);
     }
-    // 超时不报错，继续执行
+    // On timeout, continue without throwing
   }
 
   /**
@@ -467,11 +458,10 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 设置插件工厂（用于 create() 自动注入插件）
-   * @internal 由插件系统调用
+   * Set plugin factory (create() will inject plugins). @internal
    */
-  setPluginFactory<TPlugins>(factory: PluginFactory<TPlugins>): void {
-    this.pluginFactory = factory;
+  setPluginFactory<TPlugins extends Record<string, unknown>>(factory: PluginFactory<TPlugins>): void {
+    this.pluginFactory = (terminal) => factory(terminal);
   }
 
   /**
@@ -480,22 +470,18 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    * - Non-recording mode: creates independent terminal
    * - If pluginFactory is set, new terminal will have plugins property
    */
-  async create<TPlugins = Record<string, unknown>>(): Promise<TerminalWithPlugins<TPlugins>> {
+  async create<TPlugins extends Record<string, unknown> = Record<string, unknown>>(): Promise<TerminalWithPlugins<TPlugins>> {
     let newTerminal: Terminal;
 
     if (this.recording && this.tmuxSessionName) {
-      // 录制模式：使用快捷键 Ctrl+B split 窗口
-      // 分割策略（九宫格效果）：
-      // - 当前1个窗口 -> 第2个窗口：水平分割（上下）使用 "
-      // - 当前2个窗口 -> 第3个窗口：垂直分割（左右）使用 %
-      // - 以此类推：奇数个窗口时水平分割，偶数个窗口时垂直分割
+      // Recording: Ctrl+B to split. Odd panes: horizontal ("), even: vertical (%).
       const currentPaneCount = this.sharedState.paneCount;
-      const splitKey = currentPaneCount % 2 === 1 ? '"' : '%';  // 奇数水平分割，偶数垂直分割
+      const splitKey = currentPaneCount % 2 === 1 ? '"' : '%';
 
       this.session.write('\x02');  // Ctrl+B
       await this.sleep(100);
       this.session.write(splitKey);
-      await this.sleep(800);      // 等待新 pane 初始化
+      await this.sleep(800);      // Wait for new pane to init
 
       const newPaneIndex = this.sharedState.paneCount;
       this.sharedState.paneCount++;
@@ -508,11 +494,11 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       });
       newTerminal.setParentSession(this.session, this.sharedState, newPaneIndex);
     } else {
-      // 非录制模式：创建独立终端
+      // Non-recording: create independent terminal
       newTerminal = new Terminal({ recording: false });
     }
 
-    // 如果有插件工厂，为新终端创建插件实例
+    // If plugin factory set, create plugin instances for new terminal
     if (this.pluginFactory) {
       newTerminal.pluginFactory = this.pluginFactory;
       newTerminal.plugins = this.pluginFactory(newTerminal);
@@ -526,18 +512,17 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   async close(): Promise<void> {
     if (!this.closed) {
-      const tmuxSessionToClean = this.tmuxSessionName;  // 保存 session 名称
+      const tmuxSessionToClean = this.tmuxSessionName;  // Keep for cleanup
 
       if (this.recording && this.tmuxSessionName && this.session.isActive()) {
-        // 录制结束前等待 2 秒，让用户看到最后的输出
+        // Wait 2s before ending so user sees final output
         await this.sleep(2000);
-        // 使用快捷键 Ctrl+B d 分离 tmux（detach）
-        // 这会导致 tmux 退出，从而结束 asciinema 录制
+        // Ctrl+B d to detach tmux, which ends asciinema recording
         await this.sleep(300);
         this.session.write('\x02');  // Ctrl+B (tmux prefix)
         await this.sleep(100);
         this.session.write('d');     // detach
-        await this.sleep(500);       // 等待 asciinema 结束录制
+        await this.sleep(500);       // Wait for asciinema to finish
 
       } else if (this.recording && this.session.isActive()) {
         // Recording without tmux - send Ctrl+D to end asciinema recording
@@ -550,7 +535,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.closed = true;
       this.emit('close');
 
-      // 录制结束后，清理 tmux session（在录制外执行）
+      // After recording, clean up tmux session (outside recording)
       if (tmuxSessionToClean) {
         await this.cleanupTmuxSession(tmuxSessionToClean);
       }
@@ -586,8 +571,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 是否使用 PTY 模式（录制或 pty-only）
-   * PTY 模式支持交互式命令，但打字效果仅在 recording 模式下启用
+   * Whether PTY mode (recording or pty-only). Typing effect only in recording.
    */
   isPtyMode(): boolean {
     return this.recording || this.ptyOnly;
@@ -627,13 +611,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
   /**
    * Record state before sending Enter (internal use)
-   * 使用单次 tmux 查询原子获取 history_size 和 cursor_y，避免竞态条件
+   * Single tmux query for history_size and cursor_y to avoid race.
    */
   private async recordBeforeEnterState(): Promise<void> {
     if (!this.tmuxSessionName || this.paneIndex === undefined) return;
 
     try {
-      // ★ 原子查询：一次 tmux 调用同时获取 history_size 和 cursor_y
+      // Atomic: single tmux call for history_size and cursor_y
       const proc = Bun.spawn(['tmux', 'display-message', '-t', `${this.tmuxSessionName}:0.${this.paneIndex}`, '-p', '#{history_size}:#{cursor_y}'], {
         stdout: 'pipe', stderr: 'pipe'
       });
@@ -649,21 +633,18 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 在录制开始前检测提示符相关信息
-   * - 提示符占用的行数
-   * - 提示符匹配 pattern
-   * 通过创建临时 tmux session 来测量，检测过程不会出现在录制中
+   * Detect prompt before recording (line count, pattern) via temp tmux session.
    */
   private async detectPromptBeforeRecording(): Promise<void> {
     const tempSessionName = `repterm-detect-${Date.now()}`;
     const testMarker = '__REPTERM_PROMPT_TEST__';
 
     try {
-      // 创建临时 tmux session
+      // Create temp tmux session
       await Bun.spawn(['tmux', 'new-session', '-d', '-s', tempSessionName, '-x', '80', '-y', '24']).exited;
-      await this.sleep(1000); // 等待 shell 启动
+      await this.sleep(1000); // Wait for shell to start
 
-      // ★ 检测提示符 pattern（在发送命令前捕获干净的提示符）
+      // Capture prompt pattern before sending command
       const promptCaptureProc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', tempSessionName], {
         stdout: 'pipe', stderr: 'pipe'
       });
@@ -671,46 +652,46 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await promptCaptureProc.exited;
       this.detectedPromptPattern = this.analyzePromptLine(promptScreen);
 
-      // 发送测试命令（用于检测提示符行数）
+      // Send test command to detect prompt line count
       await Bun.spawn(['tmux', 'send-keys', '-t', tempSessionName, `echo ${testMarker}`, 'Enter']).exited;
-      await this.sleep(1000); // 等待命令执行完成
+      await this.sleep(1000); // Wait for command to finish
 
-      // 获取当前 cursorY
+      // Get current cursorY
       const cursorProc = Bun.spawn(['tmux', 'display-message', '-t', tempSessionName, '-p', '#{cursor_y}'], {
         stdout: 'pipe', stderr: 'pipe'
       });
       const cursorY = parseInt((await new Response(cursorProc.stdout).text()).trim(), 10) || 0;
       await cursorProc.exited;
 
-      // 捕获屏幕内容
+      // Capture screen content
       const captureProc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', tempSessionName, '-S', '0', '-E', String(cursorY)], {
         stdout: 'pipe', stderr: 'pipe'
       });
       const screenContent = await new Response(captureProc.stdout).text();
       await captureProc.exited;
 
-      // 找到测试字符串的行（找最后一次出现，即 echo 的输出，而非命令回显）
+      // Find test string line (last occurrence = echo output)
       const lines = screenContent.split('\n');
       let markerLine = -1;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes(testMarker)) {
-          markerLine = i;  // 不 break，继续找下一个，最终得到最后一次出现的位置
+          markerLine = i;  // Keep going to get last occurrence
         }
       }
 
       if (markerLine >= 0) {
-        // 提示符行数 = cursorY - markerLine
+        // promptLineCount = cursorY - markerLine
         this.promptLineCount = cursorY - markerLine;
         if (this.promptLineCount < 1) this.promptLineCount = 1;
       }
 
-      // 关闭临时 session
+      // Kill temp session
       await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName]).exited;
     } catch {
-      // 检测失败时保持默认值
+      // On failure keep defaults
       this.promptLineCount = 0;
       this.detectedPromptPattern = undefined;
-      // 尝试清理临时 session
+      // Try to kill temp session
       try {
         await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName]).exited;
       } catch { /* ignore */ }
@@ -718,7 +699,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 分析提示符行，生成匹配正则
+   * Analyze prompt line and build match regex
    */
   private analyzePromptLine(screenContent: string): RegExp | undefined {
     const lines = screenContent.trim().split('\n');
@@ -728,10 +709,10 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       return undefined;
     }
 
-    // 常见提示符字符
+    // Common prompt chars
     const promptChars = ['$', '#', '%', '>', '❯', '→', 'λ', '»', '❮', '›', '⟩'];
 
-    // 查找提示符字符的位置（选最后出现的）
+    // Find prompt char position (last occurrence)
     let foundChar = '';
     let charIndex = -1;
 
@@ -747,31 +728,31 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       return undefined;
     }
 
-    // 分析提示符后的内容
+    // Analyze content after prompt
     const afterPrompt = promptLine.substring(charIndex + 1);
     const hasRightContent = afterPrompt.trim().length > 0;
 
-    // 转义特殊正则字符
+    // Escape regex special chars
     const escapedChar = foundChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     if (hasRightContent) {
-      // 右侧提示符布局：提示符后有多个空格再有内容
+      // Right-side prompt: spaces then content
       return new RegExp(`${escapedChar}\\s{2,}`);
     } else {
-      // 传统布局：提示符在行尾
+      // Traditional: prompt at EOL
       return new RegExp(`${escapedChar}\\s*$`);
     }
   }
 
   /**
-   * 获取检测到的提示符行数
+   * Get detected prompt line count
    */
   getPromptLineCount(): number {
     return this.promptLineCount;
   }
 
   /**
-   * 获取检测到的提示符匹配 pattern
+   * Get detected prompt pattern
    */
   getDetectedPromptPattern(): RegExp | undefined {
     return this.detectedPromptPattern;
@@ -779,9 +760,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
   /**
    * Type text with human-like delays (for recording mode)
-   * @param text - 要打字的文本
-   * @param speed - 每字符延迟 (ms)，默认 80ms
-   * @param variableSpeed - 是否使用变速模式（更自然）
+   * @param text - Text to type
+   * @param speed - ms per char, default 80
+   * @param variableSpeed - Variable speed for natural typing
    */
   private async typeWithDelay(
     text: string,
@@ -789,12 +770,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     variableSpeed: boolean = true
   ): Promise<void> {
     if (speed === 0) {
-      // 速度为 0 时直接写入
+      // speed 0: write directly
       this.session.write(text);
       return;
     }
 
-    let momentum = 0; // 打字动量，模拟熟练度
+    let momentum = 0; // Typing momentum
 
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
@@ -803,31 +784,31 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       let delay: number;
 
       if (variableSpeed) {
-        // 变速模式：模拟真实打字的加速和减速
+        // Variable speed: accelerate/decelerate
         const baseDelay = Math.max(speed * 0.5, speed - momentum * 5);
 
         if (char === ' ' || char === '\n') {
-          // 单词边界：重置动量，稍长停顿
+          // Word boundary: reset momentum, longer pause
           momentum = 0;
           delay = baseDelay + speed * 0.3;
         } else {
-          // 连续打字：逐渐加速
+          // Continuous typing: speed up
           momentum = Math.min(momentum + 1, 10);
           delay = baseDelay + (Math.random() - 0.5) * speed * 0.4;
         }
 
-        // 标点符号后额外停顿
+        // Extra pause after punctuation
         if ('.,:;!?'.includes(char)) {
           delay += speed * 0.5;
         }
       } else {
-        // 原有模式：固定速度 ± 30%
+        // Legacy: fixed speed +/- 30%
         delay = speed + (Math.random() - 0.5) * speed * 0.6;
       }
 
       await this.sleep(delay);
 
-      // 引号特殊处理
+      // Special handling for quotes
       if (char === '"' || char === "'") {
         await this.sleep(50);
       }
@@ -835,7 +816,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 在录制中显示步骤标题
+   * Show step title in recording
    */
   private async displayStepTitle(title: string): Promise<void> {
     if (!this.recording) return;
@@ -843,12 +824,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     const stepOptions = getCurrentStepOptions();
     const typingSpeed = stepOptions?.typingSpeed;
 
-    // 显示注释形式的标题
+    // Show title as comment
     const comment = `# === ${title} ===`;
     await this.typeWithDelay(comment, typingSpeed ?? 40, false);
     this.session.write('\r');
     if (typingSpeed !== 0) {
-      await this.sleep(500); // 让标题显示片刻
+      await this.sleep(500); // Brief display
     }
   }
 
@@ -858,9 +839,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   private async waitForOutputStable(timeout: number = 10000): Promise<void> {
     const startTime = Date.now();
-    // 检测行中任意位置的提示符（支持右侧提示符布局）
-    // 提示符后面通常跟着空格（输入区域）
-    // 使用检测到的 pattern，或默认 pattern
+    // Detect prompt (right-side layout); use detected or default pattern
     const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s+/;
     const checkInterval = 100;
 
@@ -906,18 +885,18 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await this.initializeSession();
     }
 
-    // ★ 命令前暂停
+    // Pause before command
     if (this.recording && options?.pauseBefore) {
       await this.sleep(options.pauseBefore);
     }
 
-    // ★ 显示步骤标题（每个 step 只显示一次）
+    // Show step title (once per step)
     if (this.recording && shouldShowStepTitle() && options?.stepName) {
       await this.displayStepTitle(options.stepName);
       markStepTitleShown();
     }
 
-    // ★ 记录命令行数（直接从命令内容计算，最可靠）
+    // Record command line count from content
     this.commandLineCount = command.split('\n').length;
 
     // In recording mode, type with human-like delay
@@ -929,19 +908,19 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const typingSpeed = options?.typingSpeed ?? 80;
 
       if (hasNewline && this.tmuxSessionName) {
-        // 多行命令：使用 Bracketed Paste Mode 避免续行提示符
+        // Multiline: Bracketed Paste to avoid continuation prompt
         await this.pasteWithTmux(command);
       } else if (typingSpeed === 0) {
-        // 禁用打字效果时：快速写入
+        // When typing disabled: write fast
         this.session.write(command);
         await this.sleep(100);
-        // ★ 在发送 Enter 之前记录状态
+        // Record state before sending Enter
         await this.recordBeforeEnterState();
         this.session.write('\r');
       } else {
-        // 正常命令：人工打字效果（无论长度）
+        // Normal command: human typing
         await this.typeWithDelay(command, typingSpeed, true);
-        // ★ 在发送 Enter 之前记录状态
+        // Record state before sending Enter
         await this.recordBeforeEnterState();
         this.session.write('\r');
       }
@@ -953,34 +932,28 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * 使用 Bracketed Paste Mode 粘贴多行命令
-   * 避免 shell 显示续行提示符（如 quote>、pipe heredoc>）
-   * 
-   * Bracketed Paste Mode 使用转义序列包裹粘贴内容：
-   * - \x1b[200~ 标记粘贴开始
-   * - \x1b[201~ 标记粘贴结束
-   * Shell 会将整个内容作为单个输入块处理，不显示续行提示符
+   * Bracketed Paste for multiline: \x1b[200~...\x1b[201~ so shell treats as single input, no continuation prompt.
    */
   private async pasteWithTmux(command: string): Promise<void> {
     const paneTarget = `${this.tmuxSessionName}:0.${this.paneIndex}`;
 
-    // Bracketed Paste Mode 转义序列
+    // Bracketed Paste escape sequences
     const PASTE_START = '\x1b[200~';  // ESC [ 200 ~
     const PASTE_END = '\x1b[201~';    // ESC [ 201 ~
 
-    // 包裹命令内容（不包含最后的回车，回车在粘贴结束后单独发送）
+    // Wrap command (no final newline; send after paste)
     const wrappedContent = PASTE_START + command + PASTE_END;
 
-    // 使用 tmux send-keys -l 发送字面内容（包含转义序列）
+    // tmux send-keys -l for literal content
     await Bun.spawn(['tmux', 'send-keys', '-l', '-t', paneTarget, wrappedContent]).exited;
 
-    // 等待 shell 处理
+    // Wait for shell to process
     await this.sleep(500);
 
-    // ★ 在发送 Enter 之前记录状态（用于输出范围捕获）
+    // Record state before Enter (for output range)
     await this.recordBeforeEnterState();
 
-    // 发送回车执行命令
+    // Send Enter to run command
     await Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'Enter']).exited;
 
     await this.sleep(200);
@@ -988,12 +961,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 }
 
 /**
- * PTYProcess 实现类
- * 实现 PromiseLike 接口，支持 await 和控制器两种用法
- * 
- * 执行模式：
- * - 非录制、非交互：使用 Bun.spawn，stdout/stderr 分离，exitCode 精确
- * - 录制或交互：使用 PTY，支持 expect/send，但 exitCode 不可靠（返回 -1）
+ * PTYProcess impl. PromiseLike: await or controller. Non-recording: Bun.spawn, exact exitCode; recording/interactive: PTY, exitCode -1.
  */
 class PTYProcessImpl implements PTYProcess {
   private terminal: Terminal;
@@ -1002,10 +970,10 @@ class PTYProcessImpl implements PTYProcess {
   private options: RunOptions;
   private startTime: number;
 
-  // 用于非录制、非交互模式的 Bun.spawn 进程
+  // Bun.spawn for non-recording, non-interactive
   private bunProcess?: ReturnType<typeof Bun.spawn>;
   private isInteractive: boolean;
-  // 用于非录制交互模式的输出起始位置
+  // Output start for non-recording interactive
   private beforeOutputLength: number = 0;
 
   constructor(terminal: Terminal, command: string, options: RunOptions = {}) {
@@ -1016,11 +984,9 @@ class PTYProcessImpl implements PTYProcess {
     this.isInteractive = options.interactive ?? false;
   }
 
-  // ===== PromiseLike 实现 =====
+  // ===== PromiseLike =====
 
-  /**
-   * 实现 PromiseLike.then()
-   * await proc 时自动调用此方法
+  /** then(): called when awaiting proc
    */
   then<TResult1 = CommandResult, TResult2 = never>(
     onfulfilled?: ((value: CommandResult) => TResult1 | PromiseLike<TResult1>) | null,
@@ -1030,7 +996,7 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * 实现 catch 方法（便捷方法）
+   * catch (convenience)
    */
   catch<TResult = never>(
     onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null
@@ -1039,36 +1005,33 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * 实现 finally 方法（便捷方法）
+   * finally (convenience)
    */
   finally(onfinally?: (() => void) | null): Promise<CommandResult> {
     return this.wait().finally(onfinally);
   }
 
-  // ===== 内部方法 =====
+  // ===== Internal =====
 
-  /**
-   * 判断是否使用 PTY 模式（录制、ptyOnly 或交互）
-   * silent 模式强制使用 Bun.spawn 获取干净输出
+  /** PTY when recording/ptyOnly/interactive; silent forces Bun.spawn for clean output
    */
   private usePtyMode(): boolean {
     if (this.options.silent) {
       return false;
     }
-    // 包含 ptyOnly 模式
+    // Include ptyOnly
     return this.terminal.isRecording() || this.terminal.isPtyMode() || this.isInteractive;
   }
 
   /**
-   * 延时辅助方法
+   * Sleep helper
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
-   * 原子获取 pane 状态（history_size 和 cursor_y）
-   * 使用单次 tmux 调用避免竞态条件
+   * Get pane state atomically (single tmux call)
    */
   private async getPaneStateAtomic(): Promise<{ historySize: number; cursorY: number }> {
     if (!this.terminal.isRecording()) return { historySize: 0, cursorY: 0 };
@@ -1095,9 +1058,7 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * 捕获 pane 指定范围的输出
-   * @param startLine 起始行（负数=历史，正数=可见区域，'-'=历史开头）
-   * @param endLine 结束行（'-'=当前位置）
+   * Capture pane output range. startLine/endLine: negative=history, '-'=start/current
    */
   private async capturePaneRange(startLine: string, endLine: string): Promise<string> {
     const tmuxSession = this.terminal.getTmuxSessionName();
@@ -1118,7 +1079,7 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * 去除 ANSI 转义序列
+   * Strip ANSI escapes
    */
   private stripAnsi(text: string): string {
     const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
@@ -1126,26 +1087,23 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * 启动命令
-   * - PTY 模式：通过 terminal.executeInPty 执行
-   * - Bun.spawn 模式：直接启动子进程
+   * Start: PTY via executeInPty or Bun.spawn
    */
   private async startCommand(): Promise<void> {
     if (this.commandStarted) return;
     this.commandStarted = true;
 
     if (this.usePtyMode()) {
-      // 录制模式或交互式：使用 PTY
+      // Recording or interactive: use PTY
       if (!this.terminal.isRecording()) {
-        // 非录制交互模式：记录当前输出长度
+        // Non-recording interactive: record output length
         this.beforeOutputLength = this.terminal.getOutputLength();
       }
-      // executeInPty 内部会在发送 Enter 前记录状态
-      // ★ 从当前 step 上下文获取录制选项
+      // executeInPty records state before Enter; get options from step
       const stepOptions = getCurrentStepOptions();
       const stepName = getCurrentStepName();
 
-      // 合并选项优先级：RunOptions > StepOptions > 默认值
+      // Option priority: RunOptions > StepOptions > default
       const executeOptions = {
         typingSpeed: this.options.typingSpeed ?? stepOptions?.typingSpeed,
         pauseBefore: this.options.pauseBefore ?? stepOptions?.pauseBefore,
@@ -1155,7 +1113,7 @@ class PTYProcessImpl implements PTYProcess {
 
       await this.terminal.executeInPty(this.command, executeOptions);
     } else {
-      // 非录制、非交互：使用 Bun.spawn
+      // Non-recording, non-interactive: Bun.spawn
       const env: Record<string, string> = {};
       for (const [key, value] of Object.entries(this.options.env ?? process.env)) {
         if (value !== undefined && typeof value === 'string') {
@@ -1172,11 +1130,9 @@ class PTYProcessImpl implements PTYProcess {
     }
   }
 
-  // ===== 交互式控制方法 =====
+  // ===== Interactive =====
 
-  /**
-   * Wait for specified text to appear
-   * 仅在交互模式或录制模式下可用
+  /** Wait for text. Only in interactive or recording.
    */
   async expect(text: string, options?: { timeout?: number }): Promise<void> {
     if (!this.usePtyMode()) {
@@ -1187,8 +1143,7 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * Send input to the process (with newline)
-   * 仅在交互模式或录制模式下可用
+   * Send input (with newline). Only in interactive or recording.
    */
   async send(input: string): Promise<void> {
     if (!this.usePtyMode()) {
@@ -1199,8 +1154,7 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * Send raw input to the process (without newline)
-   * 仅在交互模式或录制模式下可用
+   * Send raw input. Only in interactive or recording.
    */
   async sendRaw(input: string): Promise<void> {
     if (!this.usePtyMode()) {
@@ -1211,8 +1165,7 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * 启动命令执行，等待输入完成（不等待命令执行完成）
-   * 用于 watch 等长时间运行的命令
+   * Start command, wait for input only (e.g. watch).
    */
   async start(): Promise<void> {
     await this.startCommand();
@@ -1227,12 +1180,12 @@ class PTYProcessImpl implements PTYProcess {
     const timeout = options?.timeout ?? this.options.timeout ?? 300000; // 5 minutes default
 
     if (this.usePtyMode()) {
-      // PTY 模式：等待输出稳定
+      // PTY: wait for output to stabilize
       await this.terminal.waitForOutputStablePublic(timeout);
 
       let output: string;
       if (this.terminal.isRecording()) {
-        // 录制模式：使用发送 Enter 前记录的状态计算输出范围
+        // Recording: use state before Enter for output range
         const beforeEnterState = this.terminal.getBeforeEnterState();
         const afterState = await this.getPaneStateAtomic();
 
@@ -1245,15 +1198,15 @@ class PTYProcessImpl implements PTYProcess {
         );
         output = await this.capturePaneRange(String(outputStartLine), String(endLine));
 
-        // 去除尾部空白行
+        // Trim trailing blank lines
         output = output.replace(/\n+$/, '').trim();
       } else {
-        // 非录制交互模式：使用 session buffer
+        // Non-recording interactive: use session buffer
         const fullOutput = this.terminal.getSessionOutput();
         output = this.stripAnsi(fullOutput.substring(this.beforeOutputLength));
       }
 
-      // ★ 命令后暂停（录制模式）
+      // Pause after command (recording)
       if (this.terminal.isRecording()) {
         const stepOptions = getCurrentStepOptions();
         const pauseAfter = this.options.pauseAfter ?? stepOptions?.pauseAfter;
@@ -1264,7 +1217,7 @@ class PTYProcessImpl implements PTYProcess {
       }
 
       const result = new CommandResultImpl({
-        code: -1, // PTY 模式无法可靠获取退出码，设为 -1 表示不可用
+        code: -1, // PTY: exitCode unreliable
         stdout: output,
         stderr: '',
         output,
@@ -1283,7 +1236,7 @@ class PTYProcessImpl implements PTYProcess {
 
       return result;
     } else {
-      // Bun.spawn 模式：等待进程结束
+      // Bun.spawn: wait for process exit
       try {
         const proc = this.bunProcess!;
         const stdoutStream = proc.stdout as ReadableStream<Uint8Array>;
@@ -1303,7 +1256,7 @@ class PTYProcessImpl implements PTYProcess {
           ),
         ]);
 
-        // 将输出存储到终端，支持 expect(terminal).toContainText() 断言
+        // Store output for expect(terminal).toContainText()
         const combinedOutput = stdout + stderr;
         this.terminal.appendNonInteractiveOutput(combinedOutput);
 
@@ -1346,8 +1299,7 @@ class PTYProcessImpl implements PTYProcess {
       const paneIndex = this.terminal.getPaneIndex();
 
       if (this.terminal.isRecording() && tmuxSession && paneIndex !== undefined) {
-        // ★ 使用 tmux send-keys 直接发送到指定窗格
-        // 不依赖当前活动窗格状态
+        // tmux send-keys to target pane
         await Bun.spawn([
           'tmux', 'send-keys', '-t', `${tmuxSession}:0.${paneIndex}`, 'C-c'
         ]).exited;

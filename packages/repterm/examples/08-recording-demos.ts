@@ -1,42 +1,42 @@
 /**
- * 示例 8: 录制演示
- * 
- * 这是一个录制测试示例，标注了 { record: true }
- * 只有在使用 --record 参数时才会运行
- * 
- * 运行方式: bun src/cli/index.ts --record examples/08-recording-demos.ts
- * 
- * 注意：
- * - 录制模式需要安装 asciinema 和 tmux
- * - 录制模式下 exitCode 不可靠，应使用输出断言
+ * Example 8: Recording Demo
+ *
+ * This is a recording test example marked with { record: true }
+ * Only runs when using the --record parameter
+ *
+ * Run: bun src/cli/index.ts --record examples/08-recording-demos.ts
+ *
+ * Notes:
+ * - Recording mode requires asciinema and tmux to be installed
+ * - In recording mode exitCode is unreliable, use output assertions instead
  */
 
 import { test, expect, describe } from '../src/index.js';
 
-describe('录制演示', { record: true }, () => {
-  test('基础命令演示', async ({ terminal }) => {
-    // 录制模式下，命令会被记录到 .cast 文件
-    await terminal.run('echo "欢迎使用 Repterm 测试框架"');
-    await expect(terminal).toContainText('欢迎');
+describe('Recording Demo', { record: true }, () => {
+  test('Basic command demo', async ({ terminal }) => {
+    // In recording mode, commands are recorded to .cast file
+    await terminal.run('echo "Welcome to Repterm Test Framework"');
+    await expect(terminal).toContainText('Welcome');
   });
 
-  test('多命令演示', async ({ terminal }) => {
+  test('Multi-command demo', async ({ terminal }) => {
     await terminal.run('pwd');
     await terminal.run('ls -la');
-    await terminal.run('echo "演示完成"');
+    await terminal.run('echo "Demo completed"');
   });
 });
 
-// 单独的录制测试
-test('独立录制测试', { record: true }, async ({ terminal }) => {
-  await terminal.run('echo "这是一个独立的录制测试"');
+// Independent recording test
+test('Independent recording test', { record: true }, async ({ terminal }) => {
+  await terminal.run('echo "This is an independent recording test"');
   await terminal.run('date');
 });
 
-// 普通测试（不标注 record: true）
-// 这个测试只会在不使用 --record 时运行
-describe('普通功能测试', () => {
-  test('验证退出码', async ({ terminal }) => {
+// Regular test (not marked with record: true)
+// This test only runs when not using --record
+describe('Regular Functional Test', () => {
+  test('Verify exit code', async ({ terminal }) => {
     const result = await terminal.run('echo "success"');
     expect(result).toSucceed();
     console.log(`  Exit code: ${result.code}`);

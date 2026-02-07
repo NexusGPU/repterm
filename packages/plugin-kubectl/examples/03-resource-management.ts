@@ -1,13 +1,13 @@
 /**
- * 示例 3: 资源管理
+ * Example 3: Resource Management
  *
- * 演示 kubectl 插件的资源管理 API：scale, patch, label, annotate, wait, waitForReplicas
+ * Demonstrates kubectl plugin resource management API: scale, patch, label, annotate, wait, waitForReplicas
  *
- * 运行方式:
+ * Running instructions:
  *   bun run repterm packages/plugin-kubectl/examples/03-resource-management.ts
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
+ * Prerequisites:
+ *   - kubectl is configured and connected to a Kubernetes cluster
  */
 
 import {
@@ -17,14 +17,14 @@ import {
 } from '../../repterm/src/index.js';
 import { kubectlPlugin } from '../src/index.js';
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-// 测试用 Deployment
+// Deployment for testing
 const nginxDeploymentYaml = `
 apiVersion: apps/v1
 kind: Deployment
@@ -49,44 +49,44 @@ spec:
         - containerPort: 80
 `;
 
-describe('资源管理 API', () => {
-    // 准备测试环境
-    test('准备: 创建测试 Deployment', async (ctx) => {
+describe('Resource Management API', () => {
+    // Setup test environment
+    test('Setup: Create test Deployment', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.apply(nginxDeploymentYaml);
 
-        // 等待 Deployment 就绪
+        // Wait for Deployment to be ready
         await kubectl.wait('deployment', 'nginx-deploy', 'Available', { timeout: 120000 });
     });
 
-    // ===== scale - 扩缩容 =====
-    test('scale - 扩展副本数', async (ctx) => {
+    // ===== scale - Scale replicas =====
+    test('scale - Scale up replicas', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 scale API 扩展到 3 个副本
+        // Use scale API to scale to 3 replicas
         await kubectl.scale('deployment', 'nginx-deploy', 3);
 
-        // 等待副本就绪
+        // Wait for replicas to be ready
         await kubectl.waitForReplicas('deployment', 'nginx-deploy', 3, 60000);
     });
 
-    test('scale - 缩减副本数', async (ctx) => {
+    test('scale - Scale down replicas', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.scale('deployment', 'nginx-deploy', 1);
     });
 
-    // ===== label - 管理标签 =====
-    test('label - 添加标签', async (ctx) => {
+    // ===== label - Manage labels =====
+    test('label - Add labels', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 label API 添加标签
+        // Use label API to add labels
         await kubectl.label('deployment', 'nginx-deploy', {
             env: 'production',
             team: 'platform',
         });
 
-        // 验证
+        // Verify
         const deploy = await kubectl.get<{
             metadata: { labels: Record<string, string> };
         }>('deployment', 'nginx-deploy');
@@ -96,17 +96,17 @@ describe('资源管理 API', () => {
         }
     });
 
-    test('label - 删除标签', async (ctx) => {
+    test('label - Delete labels', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 null 值删除标签
+        // Use null value to delete labels
         await kubectl.label('deployment', 'nginx-deploy', {
-            team: null,  // 删除 team 标签
+            team: null,  // Delete team label
         });
     });
 
-    // ===== annotate - 管理注解 =====
-    test('annotate - 添加注解', async (ctx) => {
+    // ===== annotate - Manage annotations =====
+    test('annotate - Add annotations', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.annotate('deployment', 'nginx-deploy', {
@@ -115,19 +115,19 @@ describe('资源管理 API', () => {
         });
     });
 
-    test('annotate - 删除注解', async (ctx) => {
+    test('annotate - Delete annotations', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.annotate('deployment', 'nginx-deploy', {
-            'owner': null,  // 删除 owner 注解
+            'owner': null,  // Delete owner annotation
         });
     });
 
-    // ===== patch - 补丁更新 =====
+    // ===== patch - Patch update =====
     test('patch - Strategic Merge Patch', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用对象形式的 patch
+        // Use object format for patch
         await kubectl.patch('deployment', 'nginx-deploy', {
             spec: {
                 template: {
@@ -147,21 +147,21 @@ describe('资源管理 API', () => {
     test('patch - JSON Patch', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 JSON Patch 格式
+        // Use JSON Patch format
         await kubectl.patch('deployment', 'nginx-deploy', [
             { op: 'replace', path: '/spec/replicas', value: 2 },
         ], 'json');
     });
 
-    // ===== wait - 等待条件 =====
-    test('wait - 等待 Deployment Available', async (ctx) => {
+    // ===== wait - Wait for conditions =====
+    test('wait - Wait for Deployment Available', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.wait('deployment', 'nginx-deploy', 'Available', { timeout: 60000 });
     });
 
-    // 清理
-    test('清理: 删除测试 Deployment', async (ctx) => {
+    // Cleanup
+    test('Cleanup: Delete test Deployment', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.delete('deployment', 'nginx-deploy', { force: true });
     });

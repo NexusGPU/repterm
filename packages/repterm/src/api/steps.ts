@@ -7,19 +7,19 @@ import type { Step } from '../runner/models.js';
 import { randomBytes } from 'crypto';
 
 /**
- * Step 录制选项
+ * Step recording options
  */
 export interface StepRecordingOptions {
-  /** 步骤内命令的打字速度 (ms/字符) */
+  /** Typing speed within step (ms/character) */
   typingSpeed?: number;
 
-  /** 步骤结束后暂停时间 (ms) */
+  /** Pause duration after step (ms) */
   pauseAfter?: number;
 
-  /** 步骤开始前暂停时间 (ms) */
+  /** Pause duration before step (ms) */
   pauseBefore?: number;
 
-  /** 在录制中显示步骤标题作为注释 */
+  /** Display step title as comment in recording */
   showStepTitle?: boolean;
 }
 
@@ -29,36 +29,36 @@ export interface StepRecordingOptions {
 let currentSteps: Step[] = [];
 
 /**
- * 当前 step 配置上下文
+ * Current step configuration context
  */
 let currentStepOptions: StepRecordingOptions | null = null;
 
 /**
- * 当前 step 名称
+ * Current step name
  */
 let currentStepName: string | null = null;
 
 /**
- * 当前 step 标题是否已显示
+ * Whether current step title has been shown
  */
 let stepTitleShown: boolean = false;
 
 /**
- * 获取当前 step 的录制选项
+ * Get recording options for current step
  */
 export function getCurrentStepOptions(): StepRecordingOptions | null {
   return currentStepOptions;
 }
 
 /**
- * 获取当前 step 的名称
+ * Get current step name
  */
 export function getCurrentStepName(): string | null {
   return currentStepName;
 }
 
 /**
- * 检查是否应该显示步骤标题（只显示一次）
+ * Check if step title should be displayed (only once)
  */
 export function shouldShowStepTitle(): boolean {
   if (stepTitleShown) return false;
@@ -66,7 +66,7 @@ export function shouldShowStepTitle(): boolean {
 }
 
 /**
- * 标记步骤标题已显示
+ * Mark step title as shown
  */
 export function markStepTitleShown(): void {
   stepTitleShown = true;
@@ -74,7 +74,7 @@ export function markStepTitleShown(): void {
 
 /**
  * Execute a named step within a test
- * 支持两种调用方式：
+ * Supports two calling conventions:
  * - step(name, fn)
  * - step(name, options, fn)
  */
@@ -96,14 +96,14 @@ export async function step<T>(
   // Add to current steps
   currentSteps.push(stepObj);
 
-  // 保存之前的配置
+  // Save previous configuration
   const previousOptions = currentStepOptions;
   const previousName = currentStepName;
 
-  // 设置当前 step 配置
+  // Set current step configuration
   currentStepOptions = options;
   currentStepName = name;
-  stepTitleShown = false;  // 重置标题显示状态
+  stepTitleShown = false;  // Reset title shown status
 
   try {
     // Execute the step function
@@ -117,7 +117,7 @@ export async function step<T>(
     };
     throw error;
   } finally {
-    // 恢复之前的配置
+    // Restore previous configuration
     currentStepOptions = previousOptions;
     currentStepName = previousName;
   }

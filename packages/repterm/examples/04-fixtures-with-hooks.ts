@@ -1,9 +1,9 @@
 /**
- * 示例 4: 使用 Hooks 实现 Fixtures (懒加载)
- * 
- * 运行方式: bun src/cli/index.ts examples/04-fixtures-with-hooks.ts
- * 
- * 注意：此示例独立运行，不要与其他示例一起运行，因为 hooks 是全局共享的
+ * Example 4: Using Hooks for Fixtures (Lazy Loading)
+ *
+ * Run: bun src/cli/index.ts examples/04-fixtures-with-hooks.ts
+ *
+ * Note: Run this example independently, don't run with other examples, since hooks are globally shared
  */
 
 import { test, expect, describe, beforeEach, afterEach } from '../src/index.js';
@@ -11,17 +11,17 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-describe('临时目录 Fixture', () => {
-  // 注册名为 'tmpDir' 的 fixture
-  // 只有测试参数中请求了 tmpDir 才会执行
+describe('Temporary Directory Fixture', () => {
+  // Register 'tmpDir' fixture
+  // Only executes if tmpDir is requested in test parameters
   beforeEach('tmpDir', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'repterm-example-'));
     console.log(`  [Setup] Created: ${tmpDir}`);
     return { tmpDir };
   });
 
-  // 对应的 afterEach 也需要指定名称
-  // 只有 beforeEach 被执行了才会执行清理
+  // Corresponding afterEach also needs to specify name
+  // Only executes cleanup if beforeEach was executed
   afterEach('tmpDir', async (ctx) => {
     const tmpDir = ctx.tmpDir as string | undefined;
     if (tmpDir) {
@@ -30,24 +30,21 @@ describe('临时目录 Fixture', () => {
     }
   });
 
-  test('在临时目录中创建文件', async ({ terminal, tmpDir }) => {
+  test('Create file in temporary directory', async ({ terminal, tmpDir }) => {
     const result = await terminal.run(`touch ${tmpDir}/test.txt && ls ${tmpDir}`);
     expect(result).toSucceed();
     expect(result).toHaveStdout('test.txt');
   });
 
-  test('不运行 before after', async ({ terminal }) => {
-    // 这个测试不需要 tmpDir，所以不会触发 beforeEach/afterEach
-    console.log('  [Test] 此测试不会触发 tmpDir fixture');
+  test('Not running before/after', async ({ terminal }) => {
+    // This test doesn't need tmpDir, so beforeEach/afterEach won't be triggered
+    console.log('  [Test] This test will not trigger tmpDir fixture');
     await terminal.run('echo "Hello World"');
   });
 
-  test('在临时目录中写入和读取文件', async ({ terminal, tmpDir }) => {
+  test('Write and read file in temporary directory', async ({ terminal, tmpDir }) => {
     await terminal.run(`echo "Hello World" > ${tmpDir}/hello.txt`);
 
     const readResult = await terminal.run(`cat ${tmpDir}/hello.txt`);
     expect(readResult).toSucceed();
     expect(readResult).toHaveStdout('Hello World');
-  });
-});
-

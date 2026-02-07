@@ -9,12 +9,12 @@ import { randomBytes } from 'crypto';
 
 /**
  * Create a test suite with grouped tests
- * 
+ *
  * @example
- * // 普通测试套件
+ * // Regular test suite
  * describe('suite name', () => { ... });
- * 
- * // 录制测试套件
+ *
+ * // Recording test suite
  * describe('suite name', { record: true }, () => { ... });
  */
 export function describe(name: string, fn: () => void): void;

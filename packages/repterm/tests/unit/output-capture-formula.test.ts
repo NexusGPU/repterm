@@ -3,14 +3,14 @@ import { calculateOutputRange } from '../../src/terminal/terminal.js';
 
 describe('calculateOutputRange', () => {
   test('simple command without scrolling', () => {
-    // cursor 在第 1 行，无 scrollback 增长，输出到第 5 行
+    // cursor on line 1, no scrollback growth, output to line 5
     const result = calculateOutputRange(1, 0, 5, 0, 1);
     expect(result.startLine).toBe(2);
     expect(result.endLine).toBe(4);
   });
 
   test('multiline heredoc causing scrolling (original bug scenario)', () => {
-    // 原始失败场景的真实数据：
+    // Real data from original failure:
     // before: cursorY=17, historySize=1
     // after:  cursorY=22, historySize=32
     const result = calculateOutputRange(17, 1, 22, 32, 1);
@@ -19,18 +19,18 @@ describe('calculateOutputRange', () => {
   });
 
   test('negative startLine is valid (tmux scrollback)', () => {
-    // 大量输出导致 historyGrowth 很大
+    // Large output causes big historyGrowth
     const result = calculateOutputRange(5, 0, 10, 50, 1);
     expect(result.startLine).toBe(-44); // 5 + 1 - 50
     expect(result.endLine).toBe(9);
   });
 
   test('no output (cursor unchanged)', () => {
-    // 空输出命令（如 true 或 :）
+    // No-output command (e.g. true or :)
     const result = calculateOutputRange(5, 0, 6, 0, 1);
     expect(result.startLine).toBe(6);
     expect(result.endLine).toBe(5);
-    // startLine > endLine → 空范围
+    // startLine > endLine -> empty range
   });
 
   test('single line output', () => {
@@ -40,7 +40,7 @@ describe('calculateOutputRange', () => {
   });
 
   test('multi-line prompt', () => {
-    // promptLineCount = 2 的场景
+    // promptLineCount = 2 scenario
     const result = calculateOutputRange(3, 0, 8, 0, 2);
     expect(result.startLine).toBe(4);
     expect(result.endLine).toBe(6); // 8 - 2

@@ -16,7 +16,7 @@ export interface RunConfig {
     workers: number;
   };
   terminal: {
-    promptLineCount?: number;  // undefined = 自动检测
+    promptLineCount?: number;  // undefined = auto-detect
   };
 }
 
@@ -49,7 +49,7 @@ const DEFAULT_CONFIG: RunConfig = {
     workers: 1,
   },
   terminal: {
-    promptLineCount: undefined,  // 自动检测
+    promptLineCount: undefined,  // auto-detect
   },
 };
 

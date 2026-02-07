@@ -1,6 +1,6 @@
-# Repterm 架构速览
+# Repterm architecture
 
-## 1. 分层结构
+## 1. Layers
 
 ```mermaid
 graph TB
@@ -48,7 +48,7 @@ graph TB
     TerminalImpl --> Recorder
 ```
 
-## 2. 端到端执行链路
+## 2. End-to-end flow
 
 ```mermaid
 sequenceDiagram
@@ -78,51 +78,51 @@ sequenceDiagram
     Runner->>Reporter: onRunComplete
 ```
 
-## 3. 终端模式判定（当前实现）
+## 3. Terminal mode (current)
 
-在 `runTest()`（`runner/runner.ts`）中：
+In runTest() (runner/runner.ts):
 
 - `testRecordConfig = test.options.record ?? inheritedSuiteRecord`
 - `cliRecordMode = config.record.enabled`
 - `shouldRecord = cliRecordMode && testRecordConfig`
 - `shouldUsePtyOnly = testRecordConfig && !cliRecordMode`
 
-对应 `terminal.run()` 的执行路径：
+terminal.run() paths:
 
-| 场景 | 执行方式 | 结果特征 |
+| Scenario | Execution | Result |
 | --- | --- | --- |
-| 默认（非交互） | `Bun.spawn` | `code` 可可靠断言 |
-| PTY-only | PTY | 通常 `code = -1` |
-| Recording | `asciinema + tmux + PTY` | 生成 `.cast` |
-| Interactive | PTY | 支持 `expect/send/interrupt` |
-| `silent: true` | 强制 `Bun.spawn` | 适合 JSON/退出码校验 |
+| Default (non-interactive) | Bun.spawn | reliable code |
+| PTY-only | PTY | code often -1 |
+| Recording | asciinema + tmux + PTY | produces .cast |
+| Interactive | PTY | expect/send/interrupt |
+| silent: true | Bun.spawn | for JSON/exit code |
 
-## 4. API 与插件关系
+## 4. API and plugins
 
-- 公共入口：`packages/repterm/src/index.ts`
-- DSL：`test/describe/step/hooks`
-- 断言：`expect.extend(...)` 内置终端与命令结果 matcher
-- 插件系统：
-  - `definePlugin(name, setup)` 定义插件
-  - `defineConfig({ plugins })` 创建 runtime
-  - `createTestWithPlugins(config)` 自动注入 `ctx.plugins.*`
+- Entry: `packages/repterm/src/index.ts`
+- DSL: `test/describe/step/hooks`
+- Assertions: expect.extend() for terminal and command matchers
+- Plugins:
+  - definePlugin(name, setup)
+  - defineConfig({ plugins }) for runtime
+  - createTestWithPlugins(config) injects ctx.plugins.*
 
-## 5. Kubectl 插件接入点
+## 5. Kubectl plugin
 
-- 核心：`packages/plugin-kubectl/src/index.ts`
-- Matcher：`packages/plugin-kubectl/src/matchers.ts`
-- 示例：`packages/plugin-kubectl/examples/*.ts`
+- Core: `packages/plugin-kubectl/src/index.ts`
+- Matchers: `packages/plugin-kubectl/src/matchers.ts`
+- Examples: `packages/plugin-kubectl/examples/*.ts`
 
-插件方法涵盖资源 CRUD、wait、rollout、watch、port-forward、events/nodes/cp，并扩展 `toHaveReadyReplicas`、`toHaveStatusField` 等 matcher。
+Plugin: CRUD, wait, rollout, watch, port-forward, events/nodes/cp; matchers toHaveReadyReplicas, toHaveStatusField, etc.
 
-## 6. 代码导航建议
+## 6. Code navigation
 
-- CLI/执行流：`packages/repterm/src/cli/index.ts`
-- 过滤逻辑：`packages/repterm/src/runner/filter.ts`
-- 生命周期：`packages/repterm/src/runner/runner.ts`
-- 终端实现：`packages/repterm/src/terminal/terminal.ts`
-- 插件系统：`packages/repterm/src/plugin/index.ts`
-- 单测入口：`packages/repterm/tests/unit/*.test.ts`
+- CLI/flow: `packages/repterm/src/cli/index.ts`
+- Filter: `packages/repterm/src/runner/filter.ts`
+- Lifecycle: `packages/repterm/src/runner/runner.ts`
+- Terminal: `packages/repterm/src/terminal/terminal.ts`
+- Plugins: `packages/repterm/src/plugin/index.ts`
+- Unit tests: `packages/repterm/tests/unit/*.test.ts`
 
 ## See Also
 

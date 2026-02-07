@@ -1,13 +1,12 @@
 /**
- * 测试场景 4: 资源释放验证
+ * Scenario 4: Resource release verification
  *
- * 验证删除 TensorFusionWorkload 后：
- * - GPU 资源正确释放
- * - 可用资源恢复到初始值
- * - 关联的 Worker Pod 被清理
+ * After deleting TensorFusionWorkload, verifies:
+ * - GPU resources are released
+ * - Available resources return to initial values
+ * - Associated Worker Pods are cleaned up
  *
- * 运行方式:
- *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/04-release.ts
+ * Run: bun run repterm packages/plugin-kubectl/examples/tensor-fusion/04-release.ts
  */
 
 import {
@@ -25,30 +24,32 @@ import {
 
 const WORKLOAD_NAME = 'test-workload-release';
 
-describe('测试场景 4: 资源释放验证', { record: true }, () => {
+describe('Scenario 4: Resource release verification', { record: true }, () => {
     let gpuName: string;
     let initialTflops: string;
     let allocatedTflops: string;
 
-    // ===== Step 1: 记录初始状态 =====
-    test('Step 1: 记录初始 GPU 资源状态', async (ctx) => {
+    // ===== Step 1: Record initial state =====
+    test('Step 1: Record initial GPU resource state', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('获取测试 GPU', async () => {
+        kubectl.get()
+
+        await step('Acquire test GPU', async () => {
             gpuName = await getFirstGpuName(kubectl);
         });
 
-        await step('记录初始可用资源', async () => {
+        await step('Record initial available resources', async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
             initialTflops = available.tflops;
         });
     });
 
-    // ===== Step 2: 创建并等待 Workload 就绪 =====
-    test('Step 2: 创建 TensorFusionWorkload 并等待就绪', async (ctx) => {
+    // ===== Step 2: Create and wait for Workload ready =====
+    test('Step 2: Create TensorFusionWorkload and wait for ready', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('创建 Workload', async () => {
+        await step('Create Workload', async () => {
             const yaml = workloadYaml(WORKLOAD_NAME, {
                 tflopsRequest: '1000m',
                 tflopsLimit: '2000m',
@@ -60,7 +61,7 @@ describe('测试场景 4: 资源释放验证', { record: true }, () => {
             await expect(result).toBeSuccessful();
         });
 
-        await step('等待 Workload 就绪', async () => {
+        await step('Wait for Workload ready', async () => {
             await kubectl.wait(
                 'tensorfusionworkload',
                 WORKLOAD_NAME,
@@ -69,23 +70,23 @@ describe('测试场景 4: 资源释放验证', { record: true }, () => {
             );
         });
 
-        await step('记录分配后的资源', async () => {
+        await step('Record allocated resources', async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
             allocatedTflops = available.tflops;
 
             const initialNum = parseTflops(initialTflops);
             const allocatedNum = parseTflops(allocatedTflops);
 
-            // 验证资源确实被分配了
+            // Verify resources were actually allocated
             expect(allocatedNum).toBeLessThan(initialNum);
         });
     });
 
-    // ===== Step 3: 确认 Worker Pod 存在 =====
-    test('Step 3: 确认 Worker Pod 存在', async (ctx) => {
+    // ===== Step 3: Confirm Worker Pod exists =====
+    test('Step 3: Confirm Worker Pod exists', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('查找 Worker Pod', async () => {
+        await step('Find Worker Pod', async () => {
             const pods = await kubectl.get<{
                 items: Array<{
                     metadata: { name: string };
@@ -98,16 +99,16 @@ describe('测试场景 4: 资源释放验证', { record: true }, () => {
         });
     });
 
-    // ===== Step 4: 删除 Workload =====
-    test('Step 4: 删除 TensorFusionWorkload', async (ctx) => {
+    // ===== Step 4: Delete Workload =====
+    test('Step 4: Delete TensorFusionWorkload', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('删除 Workload', async () => {
+        await step('Delete Workload', async () => {
             const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);
             await expect(result).toBeSuccessful();
         });
 
-        await step('等待 Workload 删除完成', async () => {
+        await step('Wait for Workload deletion', async () => {
             const startTime = Date.now();
             const timeout = 30000;
 
@@ -119,36 +120,36 @@ describe('测试场景 4: 资源释放验证', { record: true }, () => {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
 
-            // 超时后断言 workload 不存在
+            // After timeout, assert workload does not exist
             const exists = await kubectl.exists('tensorfusionworkload', WORKLOAD_NAME);
             expect(exists).toBe(false);
         });
     });
 
-    // ===== Step 5: 验证资源释放 =====
-    test('Step 5: 验证 GPU 资源已释放', async (ctx) => {
+    // ===== Step 5: Verify resource release =====
+    test('Step 5: Verify GPU resources released', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('等待资源释放', async () => {
+        await step('Wait for resource release', async () => {
             await new Promise(resolve => setTimeout(resolve, 5000));
         });
 
-        await step('检查 GPU 可用资源', async () => {
+        await step('Check GPU available resources', async () => {
             const releasedAvailable = await getGpuAvailable(kubectl, gpuName);
 
             const initialNum = parseTflops(initialTflops);
             const releasedNum = parseTflops(releasedAvailable.tflops);
 
-            // 验证资源已恢复（允许小误差）
+            // Verify resources restored (allow small tolerance)
             expect(Math.abs(releasedNum - initialNum)).toBeLessThan(100);
         });
     });
 
-    // ===== Step 6: 验证 Worker Pod 已清理 =====
-    test('Step 6: 验证 Worker Pod 已清理', async (ctx) => {
+    // ===== Step 6: Verify Worker Pod cleaned up =====
+    test('Step 6: Verify Worker Pod cleaned up', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('检查 Worker Pod', async () => {
+        await step('Check Worker Pod', async () => {
             const pods = await kubectl.get<{
                 items: Array<{
                     metadata: { name: string };
@@ -156,16 +157,16 @@ describe('测试场景 4: 资源释放验证', { record: true }, () => {
                 }>;
             }>('pod', undefined, { selector: `tensor-fusion.ai/workload=${WORKLOAD_NAME}` });
 
-            // Worker Pod 应该已被删除
+            // Worker Pod should be deleted
             expect(pods.items?.length ?? 0).toBe(0);
         });
     });
 
-    // ===== Step 7: 验证 Workload 不存在 =====
-    test('Step 7: 确认 Workload 已完全删除', async (ctx) => {
+    // ===== Step 7: Verify Workload gone =====
+    test('Step 7: Confirm Workload fully deleted', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('验证 Workload 不存在', async () => {
+        await step('Verify Workload does not exist', async () => {
             const workload = tensorfusionworkload(kubectl, WORKLOAD_NAME);
             await expect(workload).toNotExistInCluster();
         });

@@ -1,35 +1,38 @@
 {
-    "name": "@repterm/plugin-kubectl",
-    "version": "0.1.0",
-    "description": "Kubernetes plugin for repterm - provides kubectl testing utilities",
-    "type": "module",
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "exports": {
-        ".": {
-            "import": "./dist/index.js",
-            "types": "./dist/index.d.ts"
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "scripts": {
-        "build": "tsc",
-        "clean": "rm -rf dist"
-    },
-    "keywords": [
-        "repterm",
-        "plugin",
-        "kubectl",
-        "kubernetes",
-        "testing"
-    ],
-    "license": "MIT",
-    "dependencies": {
-        "repterm": "workspace:*"
-    },
-    "devDependencies": {
-        "typescript": "^5.3.0"
+  "name": "@nexusgpu/repterm-plugin-kubectl",
+  "version": "0.1.0",
+  "description": "Kubernetes plugin for repterm - provides kubectl testing utilities",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "repterm",
+    "plugin",
+    "kubectl",
+    "kubernetes",
+    "testing"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "repterm-api": "workspace:*"
+  },
+  "peerDependencies": {
+    "repterm": ">=0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
 }

@@ -1,15 +1,15 @@
 /**
- * 示例 5: K8s Matchers
+ * Example 5: K8s Matchers
  *
- * 演示 kubectl 插件的 expect matchers：
+ * Demonstrates kubectl plugin expect matchers:
  * toExistInCluster, toBeRunning, toHavePhase, toHaveReplicas,
  * toHaveAvailableReplicas, toBeAvailable, toHaveLabel, toHaveAnnotation, toHaveCondition
  *
- * 运行方式:
+ * Running instructions:
  *   bun run repterm packages/plugin-kubectl/examples/05-matchers.ts
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
+ * Prerequisites:
+ *   - kubectl is configured and connected to a Kubernetes cluster
  */
 
 import {
@@ -20,17 +20,17 @@ import {
 } from 'repterm';
 import { kubectlPlugin, pod, deployment, registerK8sMatchers } from '../src/index.js';
 
-// 注册 K8s matchers
+// Register K8s matchers
 registerK8sMatchers();
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-// 测试资源 YAML
+// Test resource YAML
 const testPodYaml = `
 apiVersion: v1
 kind: Pod
@@ -70,8 +70,8 @@ spec:
 `;
 
 describe('K8s Matchers', () => {
-    // 准备测试资源
-    test('准备: 创建测试资源', async (ctx) => {
+    // Setup test resources
+    test('Setup: Create test resources', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await kubectl.apply(testPodYaml);
@@ -80,74 +80,74 @@ describe('K8s Matchers', () => {
         await kubectl.wait('deployment', 'matcher-deploy', 'Available', { timeout: 120000 });
     });
 
-    // ===== toExistInCluster - 验证资源存在 =====
-    test('toExistInCluster - 验证 Pod 存在', async (ctx) => {
+    // ===== toExistInCluster - Verify resource exists =====
+    test('toExistInCluster - Verify Pod exists', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 pod() helper 创建资源包装器
+        // Use pod() helper to create resource wrapper
         await expect(pod(kubectl, 'matcher-pod')).toExistInCluster();
     });
 
-    test('toExistInCluster - 验证 Deployment 存在', async (ctx) => {
+    test('toExistInCluster - Verify Deployment exists', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(deployment(kubectl, 'matcher-deploy')).toExistInCluster();
     });
 
-    // ===== toBeRunning - 验证 Pod Running =====
-    test('toBeRunning - 验证 Pod Running 状态', async (ctx) => {
+    // ===== toBeRunning - Verify Pod Running =====
+    test('toBeRunning - Verify Pod Running status', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(pod(kubectl, 'matcher-pod')).toBeRunning();
     });
 
-    // ===== toHavePhase - 验证 Pod 阶段 =====
-    test('toHavePhase - 验证 Pod 阶段', async (ctx) => {
+    // ===== toHavePhase - Verify Pod phase =====
+    test('toHavePhase - Verify Pod phase', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(pod(kubectl, 'matcher-pod')).toHavePhase('Running');
     });
 
-    // ===== toHaveReplicas - 验证副本数 =====
-    test('toHaveReplicas - 验证 Deployment 副本数', async (ctx) => {
+    // ===== toHaveReplicas - Verify replica count =====
+    test('toHaveReplicas - Verify Deployment replicas', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(deployment(kubectl, 'matcher-deploy')).toHaveReplicas(2);
     });
 
-    // ===== toHaveAvailableReplicas - 验证可用副本数 =====
-    test('toHaveAvailableReplicas - 验证可用副本数', async (ctx) => {
+    // ===== toHaveAvailableReplicas - Verify available replicas =====
+    test('toHaveAvailableReplicas - Verify available replicas', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(deployment(kubectl, 'matcher-deploy')).toHaveAvailableReplicas(2);
     });
 
-    // ===== toBeAvailable - 验证 Deployment 可用 =====
-    test('toBeAvailable - 验证 Deployment 可用', async (ctx) => {
+    // ===== toBeAvailable - Verify Deployment available =====
+    test('toBeAvailable - Verify Deployment available', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(deployment(kubectl, 'matcher-deploy')).toBeAvailable();
     });
 
-    // ===== toHaveLabel - 验证标签 =====
-    test('toHaveLabel - 验证 Pod 标签存在', async (ctx) => {
+    // ===== toHaveLabel - Verify labels =====
+    test('toHaveLabel - Verify Pod label exists', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 只检查标签是否存在
+        // Only check if label exists
         await expect(pod(kubectl, 'matcher-pod')).toHaveLabel('app');
     });
 
-    test('toHaveLabel - 验证 Pod 标签值', async (ctx) => {
+    test('toHaveLabel - Verify Pod label value', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 检查标签的具体值
+        // Check label's specific value
         await expect(pod(kubectl, 'matcher-pod')).toHaveLabel('app', 'matcher-test');
 
         await expect(pod(kubectl, 'matcher-pod')).toHaveLabel('env', 'test');
     });
 
-    // ===== toHaveAnnotation - 验证注解 =====
-    test('toHaveAnnotation - 验证 Pod 注解', async (ctx) => {
+    // ===== toHaveAnnotation - Verify annotations =====
+    test('toHaveAnnotation - Verify Pod annotation', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(pod(kubectl, 'matcher-pod')).toHaveAnnotation('description');
@@ -155,22 +155,22 @@ describe('K8s Matchers', () => {
         await expect(pod(kubectl, 'matcher-pod')).toHaveAnnotation('description', 'Test pod for matchers');
     });
 
-    // ===== toHaveCondition - 验证条件 =====
-    test('toHaveCondition - 验证 Deployment 条件', async (ctx) => {
+    // ===== toHaveCondition - Verify conditions =====
+    test('toHaveCondition - Verify Deployment condition', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(deployment(kubectl, 'matcher-deploy')).toHaveCondition('Available', 'True');
     });
 
-    // ===== not. 否定断言 =====
-    test('not.toExistInCluster - 验证资源不存在', async (ctx) => {
+    // ===== not. Negation assertions =====
+    test('not.toExistInCluster - Verify resource does not exist', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         await expect(pod(kubectl, 'non-existent-pod')).not.toExistInCluster();
     });
 
-    // 清理
-    test('清理: 删除测试资源', async (ctx) => {
+    // Cleanup
+    test('Cleanup: Delete test resources', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.delete('pod', 'matcher-pod', { force: true });
         await kubectl.delete('deployment', 'matcher-deploy', { force: true });

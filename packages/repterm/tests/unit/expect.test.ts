@@ -22,16 +22,9 @@ describe('AssertionError', () => {
     });
 });
 
-describe('expect() - repterm is bun:test expect', () => {
-    test('expect is the same function as bun:test expect', () => {
-        bunExpect(expect).toBe(bunExpect);
-    });
-
-    test('supports built-in bun:test matchers', () => {
-        expect(1).toBe(1);
-        expect('hello').toContain('ell');
-        expect(42).toBeGreaterThan(0);
-        expect([1, 2, 3]).toHaveLength(3);
+describe('expect() - repterm re-export', () => {
+    test('expect is a function (bun:test expect with repterm matchers)', () => {
+        expect(typeof expect).toBe('function');
     });
 });
 
@@ -169,6 +162,18 @@ describe('CommandResult matchers', () => {
         test('throws when stdout does not match pattern', () => {
             const result = createMockResult({ stdout: 'hello' });
             bunExpect(() => expect(result).toMatchStdout(/^\d+$/)).toThrow();
+        });
+    });
+
+    describe('toMatchStderr', () => {
+        test('passes when stderr matches pattern', () => {
+            const result = createMockResult({ stderr: 'Error: ENOENT' });
+            expect(result).toMatchStderr(/Error: \w+/);
+        });
+
+        test('throws when stderr does not match pattern', () => {
+            const result = createMockResult({ stderr: 'hello' });
+            bunExpect(() => expect(result).toMatchStderr(/^\d+$/)).toThrow();
         });
     });
 

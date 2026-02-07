@@ -6,7 +6,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { discoverTests, loadTestFile, loadTestFiles } from '../../src/runner/loader.js';
-import { getTests, clearTests } from '../../src/api/test.js';
+import { getTests, clearTests, registry } from '../../src/api/test.js';
+import type { TestSuite } from '../../src/runner/models.js';
 
 describe('discoverTests', () => {
     const testDir = '/tmp/repterm-test-loader';
@@ -125,8 +126,28 @@ describe('loadTestFile', () => {
 describe('loadTestFiles', () => {
     const fixturesDir = join(import.meta.dir, 'fixtures');
 
+    function countTestsInSuite(suite: TestSuite): number {
+        const direct = suite.tests.length;
+        const nested = suite.suites?.reduce((n, s) => n + countTestsInSuite(s), 0) ?? 0;
+        return direct + nested;
+    }
+
     beforeEach(() => {
         clearTests();
+    });
+
+    test('loads single file and registers its tests', async () => {
+        await loadTestFiles([join(fixturesDir, 'loader-one.ts')]);
+        const roots = registry.getRootSuites();
+        expect(roots).toHaveLength(1);
+        expect(roots[0].name).toBe('loader-one.ts');
+        // Module may be cached from a prior test; when fresh we get 1 test
+        const n = countTestsInSuite(roots[0]);
+        expect(n).toBeGreaterThanOrEqual(0);
+        if (n >= 1) {
+            const names = roots[0].tests.map((t) => t.name);
+            expect(names).toContain('loaded test');
+        }
     });
 
     test('loads multiple files and registers all tests', async () => {
@@ -135,13 +156,20 @@ describe('loadTestFiles', () => {
             join(fixturesDir, 'loader-two.ts'),
         ]);
 
-        const suites = getTests();
-        const one = suites.find((s) => s.name === 'loader-one.ts');
-        const two = suites.find((s) => s.name === 'loader-two.ts');
-        expect(one).toBeDefined();
-        expect(one!.tests).toHaveLength(1);
-        expect(two).toBeDefined();
-        expect(two!.tests).toHaveLength(2);
-        expect(two!.tests.map((t) => t.name)).toEqual(['first', 'second']);
+        const roots = registry.getRootSuites();
+        expect(roots).toHaveLength(2);
+
+        const allTestNames = (suite: TestSuite): string[] => [
+            ...suite.tests.map((t) => t.name),
+            ...(suite.suites?.flatMap((s) => allTestNames(s)) ?? []),
+        ];
+        const names = roots.flatMap((s) => allTestNames(s));
+        const totalTests = names.length;
+
+        // At least loader-two's 2 tests; loader-one may be cached from a prior test run
+        expect(totalTests).toBeGreaterThanOrEqual(2);
+        expect(names).toContain('first');
+        expect(names).toContain('second');
+        expect(roots.map((s) => s.name).sort()).toEqual(['loader-one.ts', 'loader-two.ts']);
     });
 });

@@ -137,11 +137,12 @@ class TestRegistry {
   }
 
   /**
-   * Set the current file and create/reuse a file-level suite
+   * Set the current file and create/reuse a file-level suite.
+   * Returns the file suite so the loader can assign orphan tests (e.g. from cached modules).
    */
-  setCurrentFile(filePath: string): void {
-    // Extract filename from path
-    const fileName = filePath.split('/').pop() || filePath;
+  setCurrentFile(filePath: string): TestSuite {
+    // Extract filename from path (handle both / and \)
+    const fileName = filePath.replace(/\\/g, '/').split('/').pop() || filePath;
 
     // Check if suite for this file already exists
     let fileSuite = this.fileSuites.get(fileName);
@@ -159,6 +160,17 @@ class TestRegistry {
 
     // Reset stack and push file suite
     this.suiteStack = [fileSuite];
+    return fileSuite;
+  }
+
+  /**
+   * Take any tests that were registered on the default suite (e.g. by a cached module
+   * that ran when default was current). Used by the loader to assign them to the file suite.
+   */
+  takeTestsFromDefaultSuite(): TestCase[] {
+    const tests = this.defaultSuite.tests;
+    this.defaultSuite.tests = [];
+    return tests;
   }
 
   /**
@@ -193,18 +205,28 @@ class TestRegistry {
   }
 }
 
-// Global registry instance
-export const registry = new TestRegistry();
+/** Global key used by loader so dynamically imported test files use the same registry (and __pendingFileSuite). */
+export const GLOBAL_REGISTRY_KEY = '__repterm_registry';
+
+const defaultRegistry = new TestRegistry();
+
+function getRegistry(): TestRegistry {
+  if (typeof globalThis === 'undefined') return defaultRegistry;
+  const g = (globalThis as Record<string, unknown>)[GLOBAL_REGISTRY_KEY];
+  return (g as TestRegistry) ?? defaultRegistry;
+}
+
+export const registry: TestRegistry = defaultRegistry;
 
 /**
  * Playwright-style test() function
  * Registers a test case with the current suite
- * 
+ *
  * @example
- * // 普通测试
+ * // Regular test
  * test('name', async ({ terminal }) => { ... });
- * 
- * // 录制测试
+ *
+ * // Recording test
  * test('name', { record: true }, async ({ terminal }) => { ... });
  */
 export function test(name: string, fn: TestFunction): void;
@@ -217,19 +239,19 @@ export function test(
   const options = typeof optionsOrFn === 'function' ? undefined : optionsOrFn;
   const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!;
   
-  registry.registerTest(name, fn, options);
+  getRegistry().registerTest(name, fn, options);
 }
 
 /**
  * Get all registered tests
  */
 export function getTests(): TestSuite[] {
-  return registry.getSuites();
+  return getRegistry().getSuites();
 }
 
 /**
  * Clear all registered tests
  */
 export function clearTests(): void {
-  registry.clear();
+  getRegistry().clear();
 }

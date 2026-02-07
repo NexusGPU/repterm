@@ -1,18 +1,18 @@
-# @repterm/plugin-kubectl
+# @nexusgpu/repterm-plugin-kubectl
 
 Kubernetes testing plugin for Repterm. Provides kubectl operations and expect matchers for K8s resources.
 
 ## Installation
 
 ```bash
-bun add @repterm/plugin-kubectl
+bun add @nexusgpu/repterm-plugin-kubectl
 ```
 
 ## Quick Start
 
 ```typescript
 import { defineConfig, createTestWithPlugins, expect } from 'repterm';
-import { kubectlPlugin, pod, deployment } from '@repterm/plugin-kubectl';
+import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
 
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
@@ -166,7 +166,7 @@ import {
     gpupool, gpu, tensorfusionworkload, tensorfusionconnection,
     // Generic
     resource, crd
-} from '@repterm/plugin-kubectl';
+} from '@nexusgpu/repterm-plugin-kubectl';
 
 // Standard resources
 const p = pod(kubectl, 'nginx');

@@ -4,7 +4,7 @@
  */
 
 import { readdir, stat } from 'fs/promises';
-import { join, extname, basename } from 'path';
+import { join, resolve, extname, basename } from 'path';
 import { pathToFileURL } from 'url';
 import type { TestSuite } from './models.js';
 
@@ -102,20 +102,34 @@ async function findTestFiles(
  * Load a test file and execute it to register tests
  */
 export async function loadTestFile(filePath: string): Promise<void> {
-  // Convert file path to URL for ESM import
-  const fileUrl = pathToFileURL(filePath).href;
+  // Convert file path to URL for ESM import. Add cache-busting query so
+  // the same file path can be loaded multiple times (e.g. in tests) and
+  // the module runs again to register tests.
+  const baseUrl = pathToFileURL(filePath).href;
+  const fileUrl = `${baseUrl}?run=${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  // Set the current file in registry to create file-level suite
-  // Import from relative path to ensure we use the same registry instance
-  const { registry } = await import('../api/test.js');
-  registry.setCurrentFile(filePath);
+  const { registry, GLOBAL_REGISTRY_KEY } = await import('../api/test.js');
+  const g = globalThis as Record<string, unknown>;
+  const prevGlobal = g[GLOBAL_REGISTRY_KEY];
+  g[GLOBAL_REGISTRY_KEY] = registry;
+
+  const fileSuite = registry.setCurrentFile(resolve(filePath));
+  (registry as unknown as Record<string, unknown>).__pendingFileSuite = fileSuite;
 
   try {
-    // Import the test file - this will execute the file and register tests
-    // Note: TypeScript support requires running with tsx loader
     await import(fileUrl);
+    if (typeof registry.takeTestsFromDefaultSuite === 'function') {
+      const orphanTests = registry.takeTestsFromDefaultSuite();
+      if (orphanTests.length > 0) {
+        fileSuite.tests.push(...orphanTests);
+      }
+    }
   } catch (error) {
     throw new Error(`Failed to load test file ${filePath}: ${(error as Error).message}`);
+  } finally {
+    if (prevGlobal !== undefined) g[GLOBAL_REGISTRY_KEY] = prevGlobal;
+    else delete g[GLOBAL_REGISTRY_KEY];
+    delete (registry as unknown as Record<string, unknown>).__pendingFileSuite;
   }
 }
 

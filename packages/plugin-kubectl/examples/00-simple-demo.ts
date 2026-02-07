@@ -1,10 +1,9 @@
 /**
- * 示例 0: 简单演示（无需 K8s 集群）
+ * Example 0: Simple demo (no K8s cluster required)
  *
- * 验证 kubectl 插件基础功能，无需连接 Kubernetes 集群
+ * Verifies kubectl plugin basics without connecting to a Kubernetes cluster.
  *
- * 运行方式:
- *   bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
+ * Run: bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
  */
 
 import {
@@ -14,37 +13,37 @@ import {
 } from '../../repterm/src/index.js';
 import { kubectlPlugin } from '../src/index.js';
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-describe('Kubectl 插件基础功能', () => {
-    test('验证命名空间配置', async (ctx) => {
+describe('Kubectl plugin basics', () => {
+    test('namespace configuration', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 验证初始命名空间
+        // Verify initial namespace
         const ns = kubectl.getNamespace();
         if (ns !== 'default') {
             throw new Error(`Expected namespace 'default', got '${ns}'`);
         }
 
-        // 切换命名空间
+        // Switch namespace
         kubectl.setNamespace('kube-system');
         if (kubectl.getNamespace() !== 'kube-system') {
             throw new Error('Namespace switch failed');
         }
 
-        // 恢复
+        // Restore
         kubectl.setNamespace('default');
     });
 
-    test('验证命令构建', async (ctx) => {
+    test('command building', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 验证 command 方法生成正确的命令
+        // Verify command() produces correct command
         const cmd = kubectl.command('get pods');
         if (!cmd.includes('kubectl')) {
             throw new Error('Command should contain kubectl');
@@ -57,10 +56,10 @@ describe('Kubectl 插件基础功能', () => {
         }
     });
 
-    test('执行 kubectl version (run API)', async (ctx) => {
+    test('kubectl version (run API)', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用插件的 run 方法执行命令
+        // Execute via plugin run()
         await kubectl.run('version --client');
     });
 });

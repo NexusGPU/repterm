@@ -1,14 +1,14 @@
 /**
- * 测试场景 9: GPU 远程调用
+ * Test Scenario 9: GPU Remote Invocation
  *
- * 基于 `GPU远程调用测试.md`：
- * - 创建一个远程模式（isLocalGPU=false）的 TensorFusionWorkload
- * - 创建一个带 remote annotation 的 client pod
- * - 验证 TensorFusionConnection 自动创建
- * - 验证 connection 的 metadata（namespace、labels、ownerReferences）与 spec（workloadName、clientPod）
- * - 在 client pod 内执行 nvidia-smi 和 PyTorch 验证，确认可通过远程方式使用 GPU
+ * Based on `GPU_Remote_Invocation_Test.md`:
+ * - Create a remote mode (isLocalGPU=false) TensorFusionWorkload
+ * - Create a client pod with remote annotation
+ * - Verify TensorFusionConnection is automatically created
+ * - Verify connection metadata (namespace, labels, ownerReferences) and spec (workloadName, clientPod)
+ * - Execute nvidia-smi and PyTorch verification in client pod to confirm remote GPU usage
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/09-gpu-remote-invocation.ts
  */
 

@@ -1,18 +1,18 @@
-# 问题排查指南
+# Troubleshooting Guide
 
-## 1. 症状速查
+## 1. Quick symptom lookup
 
-| 症状 | 可能原因 | 优先处理 |
+| Symptom | Likely cause | Action |
 | --- | --- | --- |
-| `--record` 启动失败 | 缺少 `asciinema`/`tmux` | 安装依赖并重试 |
-| `code === -1` | 当前走 PTY/录制路径 | 改断言输出或使用 `silent` |
-| `waitForText` 超时 | 文本未出现/ANSI 干扰/超时太短 | 拉长 timeout，必要时 `stripAnsi: false` |
-| 0 tests found | 路径错误或过滤后为空 | 检查输入路径与 `{ record: true }` 标记 |
-| Kubectl JSON 解析异常 | PTY 输出混杂 | 用插件内置 JSON API 或 `silent` 路径 |
+| `--record` fails to start | Missing `asciinema`/`tmux` | Install deps and retry |
+| `code === -1` | PTY/recording path | Assert on output or use `silent` |
+| `waitForText` timeout | Text not present / ANSI noise / timeout too short | Increase timeout, try `stripAnsi: false` |
+| 0 tests found | Wrong path or filter empty | Check path and `{ record: true }` |
+| Kubectl JSON parse error | PTY output mixed | Use plugin JSON API or `silent` |
 
-## 2. 录制相关
+## 2. Recording
 
-### 2.1 依赖缺失
+### 2.1 Missing dependencies
 
 ```bash
 # macOS
@@ -22,9 +22,9 @@ brew install asciinema tmux
 apt-get install asciinema tmux
 ```
 
-对应检测：`packages/repterm/src/utils/dependencies.ts`。
+Detection: `packages/repterm/src/utils/dependencies.ts`.
 
-### 2.2 录制卡住
+### 2.2 Recording stuck
 
 ```bash
 tmux list-sessions
@@ -32,91 +32,33 @@ tmux kill-server
 ps aux | grep asciinema
 ```
 
-代码清理路径在 `Terminal.close()`：detach → kill process → kill tmux session。
+Cleanup path in `Terminal.close()`: detach, kill process, kill tmux session.
 
-### 2.3 为什么没有 `.cast`
+### 2.3 No `.cast` file
 
-确认同时满足：
+Ensure both: CLI run with `--record`, and test/suite has `{ record: true }`. Otherwise PTY-only, no `.cast`.
 
-1. CLI 带 `--record`
-2. 测试或 suite 标记 `{ record: true }`
+## 3. Exit code and output assertions
 
-否则 `{ record: true }` 测试只会进入 PTY-only，不会落 `.cast`。
+Under PTY/recording, `CommandResult.code` may be `-1`. Prefer `silent: true` for exit code or assert output.
 
-## 3. 退出码与输出断言
+## 4. waitForText failures
 
-PTY/录制路径下 `CommandResult.code` 可能是 `-1`。建议：
+Use `stripAnsi: false` to match raw output with color codes.
 
-```ts
-const result = await terminal.run('kubectl get pod x -o json', { silent: true });
-await expect(result).toHaveExitCode(0);
-```
+## 5. Test discovery
 
-或直接断言输出：
+Default match `.ts`/`.js`. `discoverTests` expects `RegExp` for `pattern`, not glob.
 
-```ts
-await expect(result).toContainInOutput('Running');
-```
+## 6. Kubectl plugin
 
-## 4. `waitForText` 失败
+Set KUBECONFIG; use `watch.interrupt()` so tests do not hang.
 
-```ts
-const snapshot = await terminal.snapshot();
-console.log(snapshot);
-
-await terminal.waitForText('expected', { timeout: 10_000, stripAnsi: true });
-```
-
-如果要匹配带颜色控制字符的原始输出，设置 `stripAnsi: false`。
-
-## 5. 测试发现与过滤
-
-### 5.1 路径与扩展名
-
-- 默认匹配 `.ts/.js`。
-- 直接文件路径可执行。
-
-### 5.2 自定义 pattern（`RegExp`）
-
-```ts
-import { discoverTests } from '../packages/repterm/src/runner/loader.js';
-
-const files = await discoverTests(['packages/repterm/examples'], {
-  pattern: /\.spec\.ts$/,
-});
-```
-
-> `discoverTests` 的 `pattern` 类型是 `RegExp`，不是 glob 字符串。
-
-## 6. Kubectl 插件常见问题
-
-### 6.1 集群连接失败
+## 7. Minimal repro
 
 ```bash
-export KUBECONFIG=~/.kube/config
-kubectl cluster-info
-bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
-```
-
-### 6.2 Watch 不退出
-
-```ts
-const watch = await ctx.plugins.kubectl.get('pods', undefined, { watch: true });
-await watch.interrupt();
-```
-
-Watch 必须显式中断，否则测试可能挂起。
-
-## 7. 最小复现命令
-
-```bash
-# 单元测试
 bun test packages/repterm/tests/unit
-
-# 核心示例
 bun run repterm packages/repterm/examples/01-basic-commands.ts
-
-# 录制示例
 bun run repterm --record packages/repterm/examples/08-recording-demos.ts
 ```
 

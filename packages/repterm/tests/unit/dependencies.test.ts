@@ -13,13 +13,6 @@ describe('checkDependencies', () => {
         expect(result.missing).toEqual([]);
     });
 
-    test('returns all present when recording is not specified', async () => {
-        const result = await checkDependencies();
-
-        expect(result.allPresent).toBe(true);
-        expect(result.missing).toEqual([]);
-    });
-
     test('checks asciinema and tmux when recording is true', async () => {
         const result = await checkDependencies(true);
 

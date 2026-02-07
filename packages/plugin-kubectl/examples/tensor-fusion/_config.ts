@@ -1,13 +1,13 @@
 /**
- * Tensor Fusion GPU 资源分配测试 - 共享配置
+ * Tensor Fusion GPU Resource Allocation Tests - Shared Configuration
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
- *   - Tensor Fusion Controller 已部署并运行
- *   - 至少存在一个 GPUPool 和可用 GPU
+ * Prerequisites:
+ *   - kubectl configured and connected to Kubernetes cluster
+ *   - Tensor Fusion Controller deployed and running
+ *   - At least one GPUPool with available GPU exists
  */
 
 import {
@@ -30,24 +30,24 @@ import {
   type KubectlMethods,
 } from '../../src/index.js';
 
-// ===== 常量配置 =====
+// ===== Configuration Constants =====
 
-/** 测试使用的 GPUPool 名称 */
+/** GPUPool name used for testing */
 export const TEST_GPU_POOL = 'tensor-fusion-shared';
 
-/** 测试命名空间 */
+/** Test namespace */
 export const TEST_NAMESPACE = 'default';
 
-/** Tensor Fusion 系统命名空间 */
+/** Tensor Fusion system namespace */
 export const TF_SYSTEM_NAMESPACE = 'tensor-fusion-sys';
 
-/** Controller Deployment 名称 */
+/** Controller Deployment name */
 export const TF_CONTROLLER_DEPLOYMENT = 'tensor-fusion-sys-controller';
 
-/** 默认等待超时时间 (ms) */
+/** Default timeout duration (ms) */
 export const DEFAULT_TIMEOUT = 60000;
 
-// ===== 插件配置 =====
+// ===== Plugin Configuration =====
 
 export const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: TEST_NAMESPACE })] as const,
@@ -55,7 +55,7 @@ export const config = defineConfig({
 
 export const test = createTestWithPlugins(config);
 
-// ===== 导出工具 =====
+// ===== Exports =====
 
 export {
   describe,
@@ -72,10 +72,10 @@ export {
 
 export type { KubectlMethods };
 
-// ===== YAML 模板 =====
+// ===== YAML Templates =====
 
 /**
- * TensorFusionWorkload 测试模板
+ * TensorFusionWorkload test template
  */
 export const workloadYaml = (name: string, options: {
   tflopsRequest?: string;
@@ -115,7 +115,7 @@ spec:
 `;
 
 /**
- * 带 Tensor Fusion Annotation 的 Deployment 模板
+ * Deployment template with Tensor Fusion Annotations
  */
 export const annotatedDeploymentYaml = (name: string, options: {
   tflopsRequest?: string;
@@ -165,13 +165,13 @@ spec:
             cpu: "500m"
 `;
 
-// ===== 工具函数 =====
+// ===== Utility Functions =====
 
 /**
- * 获取 GPUPool 中第一个 GPU 名称
+ * Get the first GPU name from GPUPool
  */
 export async function getFirstGpuName(kubectl: KubectlMethods): Promise<string> {
-  // 使用 jq 过滤出第一个 NVIDIA GPU 的名称
+  // Filter first NVIDIA GPU name using jq
   const result = await kubectl.get<string>('gpu', '', {
     selector: `tensor-fusion.ai/gpupool=${TEST_GPU_POOL}`,
     jqFilter: '[.items[] | select(.status.vendor | ascii_downcase == "nvidia")][0] | .metadata.name'
@@ -187,7 +187,7 @@ export async function getFirstGpuName(kubectl: KubectlMethods): Promise<string> 
 }
 
 /**
- * 获取 GPU 的可用资源
+ * Get available resources of a GPU
  */
 export async function getGpuAvailable(kubectl: KubectlMethods, gpuName: string): Promise<{
   tflops: string;
@@ -204,27 +204,27 @@ export async function getGpuAvailable(kubectl: KubectlMethods, gpuName: string):
 }
 
 /**
- * 解析 TFlops 值为数字（支持带 m 后缀和不带后缀的格式）
+ * Parse TFlops value to number (supports both 'm' suffix and non-suffixed formats)
  */
 export function parseTflops(value: string | number): number {
   const str = String(value);
   if (str.endsWith('m')) {
     return parseInt(str.replace('m', ''), 10);
   }
-  // 如果没有 m 后缀，假设单位是 TFlops，转换为 milli
+  // If no 'm' suffix, assume unit is TFlops, convert to milli
   const num = parseFloat(str);
   return isNaN(num) ? 0 : num * 1000;
 }
 
 /**
- * 清理测试资源
+ * Clean up test resources
  */
 export async function cleanup(kubectl: KubectlMethods, resources: Array<{ kind: string; name: string }>) {
   for (const { kind, name } of resources) {
     try {
       await kubectl.delete(kind, name);
     } catch {
-      // 忽略删除错误
+      // Ignore deletion errors
     }
   }
 }

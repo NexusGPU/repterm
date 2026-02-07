@@ -204,7 +204,7 @@ Options:
   -w, --workers <n>    Number of parallel workers (default: 1)
   -t, --timeout <ms>   Test timeout in milliseconds (default: from config)
   -v, --verbose        Verbose output with stack traces
-  -p, --prompt-lines <n>  提示符占用的行数（用于输出捕获，0=自动检测）
+  -p, --prompt-lines <n>  Prompt line count for output capture (0=auto-detect)
   --slow-threshold <ms> Show duration for tests slower than this (default: 50)
   --recording-dir <path>   Directory for recording artifacts (default: /tmp/repterm)
   -h, --help           Show this help message

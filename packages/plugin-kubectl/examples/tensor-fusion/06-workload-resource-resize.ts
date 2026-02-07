@@ -1,13 +1,13 @@
 /**
- * 测试场景 6: GPU 资源调整（扩容）
+ * Test Scenario 6: GPU Resource Adjustment (Scale-up)
  *
- * 基于 `GPU资源调整测试.md`：
- * - 先创建一个已分配 GPU 资源的 TensorFusionWorkload
- * - 记录 GPU 可用资源与 worker Pod 注解
- * - 手动 patch workload 扩容资源
- * - 验证 GPU 可用资源继续下降，worker 注解已更新
+ * Based on `GPU_Resource_Adjustment_Test.md`:
+ * - First create a TensorFusionWorkload with allocated GPU resources
+ * - Record GPU available resources and worker Pod annotations
+ * - Manually patch workload to scale up resources
+ * - Verify GPU available resources continue to decrease, worker annotations updated
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/06-workload-resource-resize.ts
  */
 
@@ -125,7 +125,7 @@ async function resolveGpuNameFromId(kubectl: KubectlMethods, gpuId: string): Pro
       return direct;
     }
   } catch {
-    // gpuId 不是 GPU CR 名称时，继续走 UUID 反查
+    // When gpuId is not GPU CR name, proceed to reverse lookup via UUID
   }
 
   const mapped = await kubectl.get<string | null>('gpu', undefined, {
@@ -139,8 +139,8 @@ async function resolveGpuNameFromId(kubectl: KubectlMethods, gpuId: string): Pro
   return String(mapped);
 }
 
-describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () => {
-  test('TensorFusionWorkload 扩容后 GPU 与 worker 注解同步更新', async (ctx) => {
+describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }, () => {
+  test('TensorFusionWorkload GPU and worker annotations sync update after scale-up', async (ctx) => {
     const { kubectl } = ctx.plugins;
     let workerPodName: string;
     let gpuName: string;
@@ -157,9 +157,9 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
     let beforeGpuId: string;
     let afterGpuId: string;
 
-    // ===== Step 1: 创建初始 Workload 并等待就绪 =====
+    // ===== Step 1: Create initial Workload and wait for ready =====
     await step(
-      '创建初始 Workload（100m/8Gi）',
+      'Create initial Workload (100m/8Gi)',
       {
         showStepTitle: false,
         typingSpeed: 100,
@@ -179,7 +179,7 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
     );
 
     await step(
-      '等待 Workload Ready 并确认 Running',
+      'Wait for Workload Ready and confirm Running',
       {
         pauseAfter: 1800,
       },
@@ -194,9 +194,9 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
       }
     );
 
-    // ===== Step 2: 记录扩容前基线 =====
+    // ===== Step 2: Record baseline before scale-up =====
     await step(
-      '记录扩容前 GPU 可用资源与 worker 注解',
+      'Record GPU available resources and worker annotations before scale-up',
       {
         showStepTitle: false,
         typingSpeed: 80,
@@ -224,9 +224,9 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
       }
     );
 
-    // ===== Step 3: 扩容 workload 资源 =====
+    // ===== Step 3: Scale up workload resources =====
     await step(
-      'patch Workload 资源到 200m/16Gi',
+      'patch Workload resources to 200m/16Gi',
       {
         showStepTitle: false,
         typingSpeed: 100,
@@ -266,9 +266,9 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
       }
     );
 
-    // ===== Step 4: 等待 worker 注解更新 =====
+    // ===== Step 4: Wait for worker annotations to update =====
     await step(
-      '等待 worker 注解更新为目标值',
+      'Wait for worker annotations to update to target values',
       {
         showStepTitle: false,
         typingSpeed: 80,
@@ -297,9 +297,9 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
       }
     );
 
-    // ===== Step 5: 验证 GPU 可用资源进一步下降 =====
+    // ===== Step 5: Verify GPU available resources further decrease =====
     await step(
-      '验证 GPU 可用资源进一步减少',
+      'Verify GPU available resources further decreased',
       {
         typingSpeed: 80,
         pauseAfter: 2200,
@@ -320,9 +320,9 @@ describe('测试场景 6: GPU 资源调整（扩容）', { record: true }, () =>
       }
     );
 
-    // ===== Step 6: 清理 =====
+    // ===== Step 6: Cleanup =====
     await step(
-      '删除 Workload 并等待资源释放',
+      'Delete Workload and wait for resource release',
       {
         showStepTitle: false,
         typingSpeed: 80,

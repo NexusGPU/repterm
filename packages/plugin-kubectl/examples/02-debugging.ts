@@ -1,13 +1,13 @@
 /**
- * 示例 2: 日志与调试
+ * Example 2: Logging and Debugging
  *
- * 演示 kubectl 插件的调试 API：logs, exec, describe
+ * Demonstrates kubectl plugin debugging API: logs, exec, describe
  *
- * 运行方式:
+ * Running instructions:
  *   bun run repterm packages/plugin-kubectl/examples/02-debugging.ts
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
+ * Prerequisites:
+ *   - kubectl is configured and connected to a Kubernetes cluster
  */
 
 import {
@@ -17,14 +17,14 @@ import {
 } from '../../repterm/src/index.js';
 import { kubectlPlugin } from '../src/index.js';
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
     plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-// 测试用 Pod
+// Pod for testing
 const debugPodYaml = `
 apiVersion: v1
 kind: Pod
@@ -39,29 +39,29 @@ spec:
     command: ['sh', '-c', 'echo "Container started"; while true; do echo "heartbeat $(date)"; sleep 5; done']
 `;
 
-describe('日志与调试 API', () => {
-    // 准备测试环境
-    test('准备: 创建测试 Pod', async (ctx) => {
+describe('Logging and Debugging API', () => {
+    // Setup test environment
+    test('Setup: Create test Pod', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.apply(debugPodYaml);
         await kubectl.waitForPod('debug-pod', 'Running', 60000);
     });
 
-    // ===== logs - 获取 Pod 日志 =====
-    test('logs - 获取 Pod 日志', async (ctx) => {
+    // ===== logs - Get Pod logs =====
+    test('logs - Get Pod logs', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 基础日志获取
+        // Basic log retrieval
         const logs = await kubectl.logs('debug-pod');
     });
 
-    test('logs - 带选项获取日志', async (ctx) => {
+    test('logs - Get logs with options', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 使用 tail 选项限制行数
+        // Use tail option to limit number of lines
         await kubectl.logs('debug-pod', { tail: 5 });
 
-        // 使用 since 选项按时间过滤
+        // Use since option to filter by time
         await kubectl.logs('debug-pod', { since: '1m' });
     });
 
@@ -73,30 +73,30 @@ describe('日志与调试 API', () => {
         await kubectl.exec('debug-pod', 'hostname');
     });
 
-    test('exec - 执行复杂命令', async (ctx) => {
+    test('exec - Execute complex command', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 执行 shell 命令
+        // Execute shell command
         await kubectl.exec('debug-pod', ['sh', '-c', 'ls -la / && echo "done"']);
     });
 
-    // ===== describe - 获取资源描述 =====
-    test('describe - 获取 Pod 描述', async (ctx) => {
+    // ===== describe - Get resource description =====
+    test('describe - Get Pod description', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 获取详细描述
+        // Get detailed description
         const description = await kubectl.describe('pod', 'debug-pod');
     });
 
-    test('describe - 获取所有 Pods 描述', async (ctx) => {
+    test('describe - Get description of all Pods', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        // 不指定名称，获取所有资源的描述
+        // Without specifying name, get description of all resources
         await kubectl.describe('pods');
     });
 
-    // 清理
-    test('清理: 删除测试 Pod', async (ctx) => {
+    // Cleanup
+    test('Cleanup: Delete test Pod', async (ctx) => {
         const { kubectl } = ctx.plugins;
         await kubectl.delete('pod', 'debug-pod', { force: true });
     });

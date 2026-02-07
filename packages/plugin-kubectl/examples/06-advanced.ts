@@ -1,14 +1,14 @@
 /**
- * 示例 6: 进阶功能
+ * Example 6: Advanced Features
  *
- * 演示 kubectl 插件的进阶 API：
+ * Demonstrates kubectl plugin advanced API:
  * portForward, waitForService, getEvents, getNodes, cp
  *
- * 运行方式:
+ * Running instructions:
  *   bun run repterm packages/plugin-kubectl/examples/06-advanced.ts
  *
- * 前置条件:
- *   - 已配置 kubectl 并连接到 Kubernetes 集群
+ * Prerequisites:
+ *   - kubectl is configured and connected to a Kubernetes cluster
  */
 
 import {
@@ -18,14 +18,14 @@ import {
 } from '../../repterm/src/index.js';
 import { kubectlPlugin } from '../src/index.js';
 
-// 配置插件
+// Configure plugin
 const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: 'default' })] as const,
 });
 
 const test = createTestWithPlugins(config);
 
-// 测试用资源
+// Test resources
 const webAppYaml = `
 apiVersion: apps/v1
 kind: Deployment
@@ -71,9 +71,9 @@ spec:
     command: ['sh', '-c', 'echo "test content" > /tmp/test.txt && sleep 3600']
 `;
 
-describe('进阶功能 API', () => {
-  // ===== getNodes - 获取节点信息 =====
-  test('getNodes - 获取集群节点', async (ctx) => {
+describe('Advanced Features API', () => {
+  // ===== getNodes - Get node information =====
+  test('getNodes - Get cluster nodes', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     const nodes = await kubectl.getNodes();
@@ -81,15 +81,15 @@ describe('进阶功能 API', () => {
     }
   });
 
-  test('getNodes - 使用选择器过滤', async (ctx) => {
+  test('getNodes - Filter using selector', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
-    // 尝试按标签过滤（可能返回空）
+    // Try filtering by label (may return empty)
     const controlPlaneNodes = await kubectl.getNodes({ selector: 'node-role.kubernetes.io/control-plane' });
   });
 
-  // 准备测试资源
-  test('准备: 创建测试资源', async (ctx) => {
+  // Setup test resources
+  test('Setup: Create test resources', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     await kubectl.apply(webAppYaml);
@@ -98,53 +98,53 @@ describe('进阶功能 API', () => {
     await kubectl.waitForPod('file-pod', 'Running', 60000);
   });
 
-  // ===== getEvents - 获取集群事件 =====
-  test('getEvents - 获取命名空间事件', async (ctx) => {
+  // ===== getEvents - Get cluster events =====
+  test('getEvents - Get namespace events', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     const events = await kubectl.getEvents();
 
-    // 显示最近几个事件
+    // Display recent events
     const recentEvents = events.slice(0, 5);
     for (const event of recentEvents) {
     }
   });
 
-  test('getEvents - 使用字段选择器过滤', async (ctx) => {
+  test('getEvents - Filter using field selector', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
-    // 过滤特定资源的事件
+    // Filter events for specific resource
     const webappEvents = await kubectl.getEvents({
       fieldSelector: 'involvedObject.name=webapp',
     });
   });
 
-  // ===== waitForService - 等待 Service 就绪 =====
-  test('waitForService - 等待 Service 有 endpoints', async (ctx) => {
+  // ===== waitForService - Wait for Service to be ready =====
+  test('waitForService - Wait for Service endpoints', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     const endpoint = await kubectl.waitForService('webapp-svc', 60000);
   });
 
-  // ===== portForward - 端口转发 =====
-  test('portForward - 端口转发到 Service', async (ctx) => {
+  // ===== portForward - Port forwarding =====
+  test('portForward - Port forward to Service', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
-    // 启动端口转发
+    // Start port forwarding
     const handle = await kubectl.portForward('svc/webapp-svc', '18080:80', { delay: 2000 });
 
-    // 可以在这里测试连接
+    // Can test connection here
     // const response = await fetch('http://localhost:18080');
 
-    // 停止端口转发
+    // Stop port forwarding
     await handle.stop();
   });
 
-  // ===== cp - 文件复制 =====
-  test('cp - 从 Pod 复制文件到本地', async (ctx) => {
+  // ===== cp - File copying =====
+  test('cp - Copy file from Pod to local', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
-    // 复制文件到本地
+    // Copy file to local
     await kubectl.cp('file-pod:/tmp/test.txt', '/tmp/k8s-test.txt');
   });
 
@@ -161,15 +161,15 @@ describe('进阶功能 API', () => {
     await kubectl.exec('file-pod', 'cat /tmp/uploaded.txt');
   });
 
-  // 清理
-  test('清理: 删除测试资源', async (ctx) => {
+  // Cleanup
+  test('Cleanup: Delete test resources', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     await kubectl.delete('deployment', 'webapp', { force: true });
     await kubectl.delete('service', 'webapp-svc', { force: true });
     await kubectl.delete('pod', 'file-pod', { force: true });
 
-    // 清理本地临时文件
+    // Cleanup local temporary files
     await ctx.terminal.run('rm -f /tmp/k8s-test.txt /tmp/upload.txt');
 
   });

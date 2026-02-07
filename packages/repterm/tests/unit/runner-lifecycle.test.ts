@@ -47,7 +47,7 @@ describe('Runner Lifecycle Hooks', () => {
 
             registerTest('test 1', async ({ setupDone }) => {
                 executionOrder.push('test1');
-                // setupDone 应该从 beforeAll 传递过来
+                // setupDone should come from beforeAll
             });
         });
 
@@ -156,7 +156,7 @@ describe('Runner Lifecycle Hooks', () => {
 
         await runSuite(suite, defaultOptions);
 
-        // 洋葱执行顺序：
+        // Onion execution order:
         // parent-beforeAll -> parent-test -> child-beforeAll -> child-test -> child-afterAll -> parent-afterAll
         expect(executionOrder).toEqual([
             'parent-beforeAll',
@@ -278,7 +278,7 @@ describe('Runner Lifecycle Hooks', () => {
         });
 
         const suites = getTests();
-        // 只获取我们创建的 Suite A 和 Suite B
+        // Only our Suite A and Suite B
         const suiteA = suites.find((s) => s.name === 'Suite A')!;
         const suiteB = suites.find((s) => s.name === 'Suite B')!;
 
@@ -382,7 +382,7 @@ describe('Terminal mode selection', () => {
 
         describeBlock('Plain Suite', () => {
             registerTest('plain test', async ({ terminal }) => {
-                // 普通模式不使用 PTY
+                // Normal mode does not use PTY
                 terminalPtyMode = terminal.isPtyMode?.();
             });
         });
@@ -407,7 +407,7 @@ describe('Terminal mode selection', () => {
 
         const suites = getTests();
         const suite = suites.find((s) => s.name === 'Recordable Suite')!;
-        // config.record.enabled = false（默认）
+        // config.record.enabled = false (default)
         await runSuite(suite, defaultOptions);
 
         expect(terminalPtyMode).toBe(true);
@@ -464,7 +464,7 @@ describe('Terminal mode selection', () => {
         const suite = suites.find((s) => s.name === 'Non-recordable Suite')!;
         await runSuite(suite, recordingOptions);
 
-        // 测试没有 record: true，即使 CLI 有 --record 也不启用 PTY
+        // Test without record: true; PTY not enabled even when CLI has --record
         expect(terminalPtyMode).toBe(false);
         expect(terminalRecording).toBe(false);
     });

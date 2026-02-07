@@ -6,53 +6,53 @@
 import type { TestCase, TestSuite } from './models.js';
 
 /**
- * 判断测试是否应该在当前模式下运行
+ * Determine whether test should run in current mode
  *
- * 运行策略：
- * - recordMode = false（普通模式）：运行所有测试（包括 record: true 的测试）
- * - recordMode = true（录制模式）：只运行标注了 record: true 的测试
+ * Execution strategy:
+ * - recordMode = false (normal mode): run all tests (including record: true tests)
+ * - recordMode = true (recording mode): run only tests marked with record: true
  *
- * @param testCase 测试用例
- * @param suite 测试套件
- * @param recordMode 是否为录制模式（--record）
+ * @param testCase Test case
+ * @param suite Test suite
+ * @param recordMode Whether in recording mode (--record)
  */
 export function shouldRunTest(
   testCase: TestCase,
   suite: TestSuite,
   recordMode: boolean
 ): boolean {
-  // 确定测试的 record 配置：test > suite > undefined
+  // Determine test record configuration: test > suite > undefined
   const testRecordConfig = testCase.options?.record ?? getInheritedRecordConfig(suite);
 
-  // 普通模式下运行所有测试
+  // In normal mode run all tests
   if (!recordMode) {
     return true;
   }
 
-  // 录制模式下只运行标注了 record: true 的测试
+  // In recording mode run only tests marked with record: true
   return testRecordConfig === true;
 }
 
 /**
- * 获取从 suite 继承的 record 配置
- * 递归向上查找父 suite 的配置
+ * Get inherited record configuration from suite
+ * Recursively searches parent suites for configuration
  */
 function getInheritedRecordConfig(suite: TestSuite): boolean | undefined {
-  // 先检查当前 suite 的配置
+  // Check current suite configuration first
   if (suite.options?.record !== undefined) {
     return suite.options.record;
   }
-  
-  // 向上查找父 suite
+
+  // Search parent suite
   if (suite.parent) {
     return getInheritedRecordConfig(suite.parent);
   }
-  
+
   return undefined;
 }
 
 /**
- * 过滤测试套件，移除不应运行的测试
+ * Filter test suites, removing tests that should not run
  */
 export function filterSuites(
   suites: TestSuite[],
@@ -64,7 +64,7 @@ export function filterSuites(
 }
 
 /**
- * 过滤单个测试套件
+ * Filter individual test suite
  */
 function filterSuite(suite: TestSuite, recordMode: boolean): TestSuite {
   const filteredTests = suite.tests.filter(test => shouldRunTest(test, suite, recordMode));
@@ -80,22 +80,22 @@ function filterSuite(suite: TestSuite, recordMode: boolean): TestSuite {
 }
 
 /**
- * 检查套件是否有测试（包括嵌套套件）
+ * Check if suite has tests (including nested suites)
  */
 function hasTests(suite: TestSuite): boolean {
   if (suite.tests.length > 0) {
     return true;
   }
-  
+
   if (suite.suites && suite.suites.length > 0) {
     return suite.suites.some(s => hasTests(s));
   }
-  
+
   return false;
 }
 
 /**
- * 统计测试数量（包括嵌套套件）
+ * Count tests (including nested suites)
  */
 export function countTests(suites: TestSuite[]): number {
   let count = 0;

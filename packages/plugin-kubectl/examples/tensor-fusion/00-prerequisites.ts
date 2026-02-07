@@ -1,13 +1,13 @@
 /**
- * 测试场景 0: 前置条件检查
+ * Test Scenario 0: Prerequisites Check
  *
- * 验证测试环境满足以下条件：
- * - Kubernetes 集群连接正常
- * - Tensor Fusion Controller 运行正常
- * - GPUPool 存在且状态为 Ready
- * - 至少有一个可用 GPU，资源充足
+ * Verify the test environment meets the following conditions:
+ * - Kubernetes cluster connection is working
+ * - Tensor Fusion Controller is running properly
+ * - GPUPool exists and status is Ready
+ * - At least one available GPU with sufficient resources
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/00-prerequisites.ts
  */
 
@@ -26,22 +26,22 @@ import {
     parseTflops,
 } from './_config.js';
 
-describe('前置条件检查', { record: true }, () => {
-    // ===== 集群连接检查 =====
-    test('验证 Kubernetes 集群连接', async (ctx) => {
+describe('Prerequisites Check', { record: true }, () => {
+    // ===== Cluster Connection Check =====
+    test('Verify Kubernetes cluster connection', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('检查集群连接状态', async () => {
+        await step('Check cluster connectivity', async () => {
             const clusterInfo = await kubectl.clusterInfo();
             expect(clusterInfo.reachable).toBe(true);
         });
     });
 
-    // ===== Tensor Fusion Controller 检查 =====
-    test('验证 Tensor Fusion Controller 运行状态', async (ctx) => {
+    // ===== Tensor Fusion Controller Check =====
+    test('Verify Tensor Fusion Controller running status', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('检查 Controller Deployment', async () => {
+        await step('Check Controller Deployment', async () => {
             const originalNs = kubectl.getNamespace();
             kubectl.setNamespace(TF_SYSTEM_NAMESPACE);
 
@@ -55,36 +55,36 @@ describe('前置条件检查', { record: true }, () => {
         });
     });
 
-    // ===== GPUPool 检查 =====
-    test('验证 GPUPool 存在且就绪', async (ctx) => {
+    // ===== GPUPool Check =====
+    test('Verify GPUPool exists and is ready', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('检查 GPUPool 存在', async () => {
+        await step('Check GPUPool existence', async () => {
             const pool = gpupool(kubectl, TEST_GPU_POOL);
             await expect(pool).toExistInCluster();
         });
 
-        await step('检查 GPUPool 状态', async () => {
+        await step('Check GPUPool status', async () => {
             const pool = gpupool(kubectl, TEST_GPU_POOL);
             await expect(pool).toHaveStatusField('phase', 'Running');
         });
     });
 
-    // ===== GPU 资源检查 =====
-    test('验证 GPU 资源充足', async (ctx) => {
+    // ===== GPU Resource Check =====
+    test('Verify GPU resources are sufficient', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
         const gpuName = await getFirstGpuName(kubectl);
 
-        await step('检查 GPU 可用资源', async () => {
+        await step('Check GPU available resources', async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
             const tflopsValue = parseTflops(available.tflops);
 
-            // 验证资源满足测试要求 (至少 2000m TFlops)
+            // Verify resources meet test requirements (at least 2000m TFlops)
             expect(tflopsValue).toBeGreaterThanOrEqual(2000);
         });
 
-        await step('检查 GPU 状态', async () => {
+        await step('Check GPU status', async () => {
             const exists = await kubectl.exists('gpu', gpuName);
             expect(exists).toBe(true);
         });

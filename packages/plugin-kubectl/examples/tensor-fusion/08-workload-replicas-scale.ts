@@ -1,12 +1,12 @@
 /**
- * 测试场景 8: Workload Replicas 扩缩容
+ * Test Scenario 8: Workload Replicas Scale Up/Down
  *
- * 基于 `WorkloadReplicas扩缩容测.md`：
- * - 先创建一个 replicas=1 的 TensorFusionWorkload 并等待就绪
- * - 将 replicas 从 1 扩容到 2，验证 worker pods 增加、status.workerCount=2
- * - 将 replicas 从 2 缩容回 1，验证 worker pods 减少、status.workerCount=1
+ * Based on `WorkloadReplicas_Scale_Test.md`:
+ * - First create replicas=1 TensorFusionWorkload and wait for ready
+ * - Scale replicas from 1 to 2, verify worker pods increase and status.workerCount=2
+ * - Scale replicas from 2 back to 1, verify worker pods decrease and status.workerCount=1
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/08-workload-replicas-scale.ts
  */
 
@@ -25,7 +25,7 @@ import {
 const WORKLOAD_NAME = 'test-workload-replicas';
 
 /**
- * 获取指定 workload 的 worker pod 数量
+ * Get the number of worker pods for a given workload
  */
 async function getWorkerPodCount(kubectl: KubectlMethods, workloadName: string): Promise<number> {
   const pods = await kubectl.get<Array<{ name: string; phase: string }>>('pod', undefined, {
@@ -36,11 +36,11 @@ async function getWorkerPodCount(kubectl: KubectlMethods, workloadName: string):
   return pods?.length ?? 0;
 }
 
-describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => {
-  test('TensorFusionWorkload 扩缩容后 worker pods 与 workerCount 同步更新', async (ctx) => {
+describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, () => {
+  test('TensorFusionWorkload worker pods and workerCount sync update after scale up/down', async (ctx) => {
     const { kubectl } = ctx.plugins;
-    // ===== Step 1: 创建 replicas=1 的 Workload 并等待就绪 =====
-    await step('创建 Workload（replicas=1）', {
+    // ===== Step 1: Create replicas=1 Workload and wait for ready =====
+    await step('Create Workload (replicas=1)', {
       showStepTitle: false,
       typingSpeed: 100,
       pauseAfter: 2000,
@@ -57,7 +57,7 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       await expect(result).toBeSuccessful();
     });
 
-    await step('等待 Workload Ready', {
+    await step('Wait for Workload Ready', {
       showStepTitle: false,
       pauseAfter: 1800,
     }, async () => {
@@ -73,8 +73,8 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       await expect(workload).toHaveStatusField('phase', 'Running');
     });
 
-    // ===== Step 2: 记录当前 worker pod 数量 =====
-    await step('记录当前 worker pod 数量', {
+    // ===== Step 2: Record current worker pod count =====
+    await step('Record current worker pod count', {
       typingSpeed: 80,
       pauseAfter: 1500,
     }, async () => {
@@ -82,14 +82,14 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
 
       expect(beforeCount).toBe(1);
 
-      // 验证 status.workerCount 也为 1
+      // Verify status.workerCount is also 1
       const status = await kubectl.getJsonPath<{ workerCount?: number }>(
         'tensorfusionworkload', WORKLOAD_NAME, '.status',
       );
       expect(status?.workerCount).toBe(1);
     });
 
-    // ===== Step 3: 扩容 replicas 到 2 =====
+    // ===== Step 3: Scale up replicas to 2 =====
     await step('patch Workload replicas=2', {
       showStepTitle: false,
       typingSpeed: 100,
@@ -103,15 +103,15 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       );
       await expect(patchResult).toBeSuccessful();
 
-      // 确认 spec.replicas 已更新
+      // Confirm spec.replicas has been updated
       const replicas = await kubectl.getJsonPath<number>(
         'tensorfusionworkload', WORKLOAD_NAME, '.spec.replicas',
       );
       expect(replicas).toBe(2);
     });
 
-    // ===== Step 4: 验证扩容结果 =====
-    await step('等待 workerCount=2', {
+    // ===== Step 4: Verify scale-up results =====
+    await step('Wait for workerCount=2', {
       showStepTitle: false,
       pauseAfter: 2000,
     }, async () => {
@@ -135,7 +135,7 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       expect(status?.workerCount).toBe(2);
     });
 
-    await step('验证扩容后 worker pod 数量为 2', {
+    await step('Verify worker pod count is 2 after scale-up', {
       typingSpeed: 80,
       pauseAfter: 2500,
     }, async () => {
@@ -144,7 +144,7 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       expect(afterScaleUpCount).toBe(2);
     });
 
-    // ===== Step 5: 缩容 replicas 回 1 =====
+    // ===== Step 5: Scale down replicas to 1 =====
     await step('patch Workload replicas=1', {
       showStepTitle: false,
       typingSpeed: 100,
@@ -159,7 +159,7 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       await expect(patchResult).toBeSuccessful();
     });
 
-    await step('等待 workerCount=1', {
+    await step('Wait for workerCount=1', {
       showStepTitle: false,
       pauseAfter: 2000,
     }, async () => {
@@ -183,7 +183,7 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       expect(status?.workerCount).toBe(1);
     });
 
-    await step('验证缩容后 worker pod 数量为 1', {
+    await step('Verify worker pod count is 1 after scale-down', {
       typingSpeed: 80,
       pauseAfter: 2500,
     }, async () => {
@@ -192,8 +192,8 @@ describe('测试场景 8: Workload Replicas 扩缩容', { record: true }, () => 
       expect(afterScaleDownCount).toBe(1);
     });
 
-    // ===== Step 6: 清理 =====
-    await step('删除 TensorFusionWorkload', {
+    // ===== Step 6: Cleanup =====
+    await step('Delete TensorFusionWorkload', {
       showStepTitle: false,
       typingSpeed: 80,
       pauseAfter: 2000,

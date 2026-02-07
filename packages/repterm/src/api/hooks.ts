@@ -9,13 +9,12 @@ import type { TestContext, TestSuite } from '../runner/models.js';
 import { registry } from './test.js';
 
 /**
- * 基础 Hook 函数类型
+ * Base hook function type
  */
 export type HookFunction = (context: TestContext) => Promise<void> | void;
 
 /**
- * 增强的 Hook 函数类型，支持返回值注入
- * 返回的对象会被合并到后续的 context 中
+ * Enhanced hook: return value is merged into context
  */
 export type EnhancedHookFunction = (
   context: TestContext
@@ -25,7 +24,7 @@ export type EnhancedHookFunction = (
  * Named beforeEach hook entry (for lazy execution)
  */
 interface NamedBeforeEachEntry {
-  name: string; // Fixture 名称
+  name: string; // Fixture name
   fn: EnhancedHookFunction;
   suiteId?: string;
 }
@@ -34,7 +33,7 @@ interface NamedBeforeEachEntry {
  * Named afterEach hook entry (for lazy cleanup)
  */
 interface NamedAfterEachEntry {
-  name: string; // Fixture 名称
+  name: string; // Fixture name
   fn: HookFunction;
   suiteId?: string;
 }
@@ -251,14 +250,14 @@ export const hooksRegistry = new HooksRegistry();
 /**
  * Register a named beforeEach hook with lazy execution
  * 
- * 只有测试函数参数中请求了该 Fixture，才会执行此 Hook。
+ * Hook runs only when test params request this fixture.
  * 
- * @param name Fixture 名称（必须与返回对象的 key 一致）
- * @param fn Hook 函数，返回对象会被注入到 context
+ * @param name Fixture name (must match return object key)
+ * @param fn Hook; return value injected into context
  * 
  * @example
  * describe('my tests', () => {
- *   // 注册名为 'tmpDir' 的 fixture
+ *   // Register 'tmpDir' fixture
  *   beforeEach('tmpDir', async () => {
  *     const tmpDir = await fs.mkdtemp('/tmp/test-');
  *     return { tmpDir };
@@ -268,12 +267,12 @@ export const hooksRegistry = new HooksRegistry();
  *     if (tmpDir) await fs.rm(tmpDir, { recursive: true });
  *   });
  * 
- *   // 这个测试会触发 tmpDir fixture
+ *   // This test triggers tmpDir
  *   test('uses tmpDir', async ({ terminal, tmpDir }) => {
  *     await terminal.run(`ls ${tmpDir}`);
  *   });
  * 
- *   // 这个测试不会触发 tmpDir fixture
+ *   // This test does not trigger tmpDir
  *   test('no fixture needed', async ({ terminal }) => {
  *     await terminal.run('echo hello');
  *   });
@@ -287,10 +286,10 @@ export function beforeEach(name: string, fn: EnhancedHookFunction): void {
 /**
  * Register a named afterEach hook
  *
- * 只有对应的 beforeEach 被执行了，此 Hook 才会执行。
+ * Runs only when matching beforeEach ran.
  *
- * @param name Fixture 名称（与 beforeEach 注册的名称一致）
- * @param fn Hook 函数
+ * @param name Fixture name (same as beforeEach)
+ * @param fn Hook function
  */
 export function afterEach(name: string, fn: HookFunction): void {
   const suiteId = registry.getCurrentSuiteId();
@@ -300,10 +299,10 @@ export function afterEach(name: string, fn: HookFunction): void {
 /**
  * Register a beforeAll hook for the current suite
  *
- * 在 Suite 中所有测试执行前只运行一次。
- * 返回的对象会被合并到 Context，传递给所有测试。
+ * Runs once before all tests in suite.
+ * Return value merged into context for all tests.
  *
- * @param fn Hook 函数，返回对象会被注入到 context
+ * @param fn Hook; return value injected into context
  *
  * @example
  * describe('admin tests', () => {
@@ -341,9 +340,9 @@ export function beforeAll(
 /**
  * Register an afterAll hook for the current suite
  *
- * 在 Suite 中所有测试执行后只运行一次。
+ * Runs once after all tests in suite.
  *
- * @param fn Hook 函数
+ * @param fn Hook function
  */
 export function afterAll(fn: HookFunction): void;
 export function afterAll(name: string, fn: HookFunction): void;

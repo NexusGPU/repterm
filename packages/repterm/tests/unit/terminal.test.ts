@@ -219,7 +219,7 @@ describe('run() with CommandResult', () => {
 describe('analyzePromptLine', () => {
     test('detects traditional prompt at line end', () => {
         const terminal = new Terminal();
-        // 使用类型断言访问私有方法
+        // Use type assertion to access private method
         const analyze = (terminal as any).analyzePromptLine.bind(terminal);
 
         const pattern = analyze('user@host:~$ ');
@@ -231,7 +231,7 @@ describe('analyzePromptLine', () => {
         const terminal = new Terminal();
         const analyze = (terminal as any).analyzePromptLine.bind(terminal);
 
-        // 右侧提示符：❯ 后有多个空格再有时间
+        // Right-side prompt: spaces after ❯ then time
         const line = '  ~/path on main ❯                     at  18:44:46';
         const pattern = analyze(line);
         expect(pattern).toBeDefined();

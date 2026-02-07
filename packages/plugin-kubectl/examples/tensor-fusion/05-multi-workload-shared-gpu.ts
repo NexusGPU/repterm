@@ -1,13 +1,13 @@
 /**
- * 测试场景 5: 多 Workload 共享 GPU
+ * Test Scenario 5: Multiple Workloads Sharing GPU
  *
- * 验证两个 TensorFusionWorkload 共享同一张 GPU 时：
- * - 两个 workload 均可正常调度并进入 Running
- * - GPU.status.available 资源扣减准确（两倍请求量）
- * - GPU.status.runningApps 包含两个 workload
- * - 删除后资源正确恢复
+ * Verify that when two TensorFusionWorkloads share the same GPU:
+ * - Both workloads can be scheduled normally and enter Running state
+ * - GPU.status.available resource deduction is accurate (double request amount)
+ * - GPU.status.runningApps contains both workloads
+ * - Resources correctly recover after deletion
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/05-multi-workload-shared-gpu.ts
  */
 
@@ -30,20 +30,20 @@ import {
 const WL_NAME_1 = 'tf-share-wl-1';
 const WL_NAME_2 = 'tf-share-wl-2';
 
-/** 每个 workload 请求的 tflops（1 TFlops = 1000m） */
+/** TFlops requested by each workload (1 TFlops = 1000m) */
 const TFLOPS_REQUEST = '1000m';
 const TFLOPS_LIMIT = '1000m';
 const VRAM_REQUEST = '1Gi';
 const VRAM_LIMIT = '1Gi';
 
-describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
-    test('两个 TensorFusionWorkload 共享同一张 GPU 完整流程', async (ctx) => {
+describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, () => {
+    test('Two TensorFusionWorkloads sharing single GPU complete flow', async (ctx) => {
         const { kubectl } = ctx.plugins;
         let gpuName: string;
         let initialTflops: string;
 
-        // ===== Step 1: 记录初始状态 =====
-        await step('获取目标 GPU 并记录初始资源', {
+        // ===== Step 1: Record initial state =====
+        await step('Acquire target GPU and record initial resources', {
             showStepTitle: false,
             typingSpeed: 60,
             pauseAfter: 1500,
@@ -53,14 +53,14 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             const available = await getGpuAvailable(kubectl, gpuName);
             initialTflops = available.tflops;
 
-            // 确认 GPU 有足够资源容纳两个 workload
+            // Confirm GPU has sufficient resources for two workloads
             const initialNum = parseTflops(initialTflops);
             const requiredNum = parseTflops(TFLOPS_REQUEST) * 2;
             expect(initialNum).toBeGreaterThanOrEqual(requiredNum);
         });
 
-        // ===== Step 2: 创建两个 workload =====
-        await step('创建第一个 Workload: ' + WL_NAME_1, {
+        // ===== Step 2: Create two workloads =====
+        await step('Create first Workload: ' + WL_NAME_1, {
             showStepTitle: false,
             typingSpeed: 100,
             pauseAfter: 2000,
@@ -76,7 +76,7 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             await expect(result).toBeSuccessful();
         });
 
-        await step('创建第二个 Workload: ' + WL_NAME_2, {
+        await step('Create second Workload: ' + WL_NAME_2, {
             showStepTitle: false,
             typingSpeed: 100,
             pauseAfter: 2000,
@@ -92,8 +92,8 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             await expect(result).toBeSuccessful();
         });
 
-        // ===== Step 3: 等待两个 workload 都变为 Running =====
-        await step('等待 ' + WL_NAME_1 + ' Ready', {
+        // ===== Step 3: Wait for both workloads to become Running =====
+        await step('Wait for ' + WL_NAME_1 + ' Ready', {
             showStepTitle: false,
             pauseAfter: 1500,
         }, async () => {
@@ -106,7 +106,7 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             await expect(result).toBeSuccessful();
         });
 
-        await step('等待 ' + WL_NAME_2 + ' Ready', {
+        await step('Wait for ' + WL_NAME_2 + ' Ready', {
             showStepTitle: false,
             pauseAfter: 1500,
         }, async () => {
@@ -119,7 +119,7 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             await expect(result).toBeSuccessful();
         });
 
-        await step('验证两个 Workload 状态均为 Running', {
+        await step('Verify both Workload statuses are Running', {
             typingSpeed: 80,
             pauseAfter: 2000,
         }, async () => {
@@ -130,8 +130,8 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             await expect(wl2).toHaveStatusField('phase', 'Running');
         });
 
-        // ===== Step 4: 验证 GPU 可用资源扣减 =====
-        await step('检查 GPU 可用资源变化', {
+        // ===== Step 4: Verify GPU available resource deduction =====
+        await step('Check GPU available resources change', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2500,
@@ -143,14 +143,14 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             const afterNum = parseTflops(afterAvailable.tflops);
             const expectedDeduction = parseTflops(TFLOPS_REQUEST) * 2;
 
-            // TFlops 应减少约 2 个 workload 的请求量
+            // TFlops should decrease by about 2 workloads' request amount
             expect(afterNum).toBeLessThan(initialNum);
             expect(initialNum - afterNum).toBeGreaterThanOrEqual(expectedDeduction - 100);
             expect(initialNum - afterNum).toBeLessThanOrEqual(expectedDeduction + 100);
         });
 
-        // ===== Step 5: 验证 runningApps =====
-        await step('检查 GPU runningApps 包含两个 workload', {
+        // ===== Step 5: Verify runningApps =====
+        await step('Check GPU runningApps contains both workloads', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2500,
@@ -174,8 +174,8 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             expect(appNames).toContain(`${TEST_NAMESPACE}/${WL_NAME_2}`);
         });
 
-        // ===== Step 6: 清理 =====
-        await step('删除两个 TensorFusionWorkload', {
+        // ===== Step 6: Cleanup =====
+        await step('Delete two TensorFusionWorkloads', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000,
@@ -187,7 +187,7 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             await expect(r2).toBeSuccessful();
         });
 
-        await step('等待资源释放并验证恢复', {
+        await step('Wait for resource release and verify recovery', {
             pauseAfter: 2000,
         }, async () => {
             await new Promise(resolve => setTimeout(resolve, 5000));
@@ -196,7 +196,7 @@ describe('测试场景 5: 多 Workload 共享 GPU', { record: true }, () => {
             const releasedNum = parseTflops(afterRelease.tflops);
             const initialNum = parseTflops(initialTflops);
 
-            // 允许小误差，但应接近初始值
+            // Allow small tolerance, but should approach initial value
             expect(releasedNum).toBeGreaterThanOrEqual(initialNum - 100);
         });
     });

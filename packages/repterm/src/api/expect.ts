@@ -9,17 +9,8 @@
 import { expect } from 'bun:test';
 import type { TerminalAPI, CommandResult } from '../runner/models.js';
 
-// ===== Matcher Types =====
-
-/**
- * Result returned by a custom matcher (for plugin authors)
- */
-export interface MatcherResult {
-  pass: boolean;
-  message: () => string;
-  actual?: unknown;
-  expected?: unknown;
-}
+// Re-export for consumers (single source of truth in plugin-api)
+export type { MatcherResult } from 'repterm-api';
 
 /**
  * Assertion error with expected/actual values
@@ -210,21 +201,21 @@ declare module 'bun:test' {
     /** Assert that terminal output matches regex */
     toMatchPattern(pattern: RegExp): Promise<void>;
     /** Assert command succeeded (exit code === 0) */
-    toSucceed(): void;
+    toSucceed(): Matchers<T>;
     /** Assert command failed (exit code !== 0) */
-    toFail(): void;
+    toFail(): Matchers<T>;
     /** Assert exit code equals expected value */
-    toHaveExitCode(expected: number): void;
+    toHaveExitCode(expected: number): Matchers<T>;
     /** Assert stdout contains expected text */
-    toHaveStdout(expected: string): void;
+    toHaveStdout(expected: string): Matchers<T>;
     /** Assert stderr contains expected text */
-    toHaveStderr(expected: string): void;
+    toHaveStderr(expected: string): Matchers<T>;
     /** Assert stdout matches regex pattern */
-    toMatchStdout(pattern: RegExp): void;
+    toMatchStdout(pattern: RegExp): Matchers<T>;
     /** Assert stderr matches regex pattern */
-    toMatchStderr(pattern: RegExp): void;
+    toMatchStderr(pattern: RegExp): Matchers<T>;
     /** Assert combined output contains text */
-    toContainInOutput(expected: string): void;
+    toContainInOutput(expected: string): Matchers<T>;
   }
 }
 

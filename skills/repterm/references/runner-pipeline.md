@@ -1,77 +1,77 @@
-# Runner / Scheduler / Reporter 流程
+# Runner / Scheduler / Reporter pipeline
 
-## 1. CLI 主流程
+## 1. CLI flow
 
-对应 `packages/repterm/src/cli/index.ts`：
+See `packages/repterm/src/cli/index.ts`:
 
-1. 解析参数，加载 config（含 `record/workers/timeout/prompt-lines`）。
-2. `discoverTests(paths)` 找到测试文件。
-3. `loadTestFiles(files)` 执行注册，取 `registry.getRootSuites()`。
-4. `filterSuites(allSuites, recordEnabled)` 过滤测试。
-5. 根据 `workers`：
-   - `workers === 1`：`runAllSuites(...)`
-   - `workers > 1`：`createScheduler(...).run(...)`
-6. Reporter 流式输出并汇总，失败则退出码 1。
+1. Parse args, load config (record/workers/timeout/prompt-lines).
+2. discoverTests(paths) finds test files.
+3. loadTestFiles(files) registers and gets registry.getRootSuites().
+4. filterSuites(allSuites, recordEnabled) filters.
+5. By workers:
+   - `workers === 1`: `runAllSuites(...)`
+   - `workers > 1`: `createScheduler(...).run(...)`
+6. Reporter streams output and summary; exit 1 on failure.
 
-## 2. 过滤与录制判定
+## 2. Filter and recording
 
-### 2.1 过滤（`runner/filter.ts`）
+### 2.1 Filter (runner/filter.ts)
 
-- `recordMode=false`：返回全部测试（含 `record: true`）。
-- `recordMode=true`：仅保留 `record: true` 测试。
+- recordMode=false: return all tests (including record: true).
+- recordMode=true: only record: true tests.
 
-### 2.2 每个测试的终端模式（`runner/runner.ts`）
+### 2.2 Per-test terminal mode (runner/runner.ts)
 
-- `testRecordConfig = test.options.record ?? inheritedSuiteRecord`。
-- `cliRecordMode = config.record.enabled`。
-- `shouldRecord = cliRecordMode && testRecordConfig`。
-- `shouldUsePtyOnly = testRecordConfig && !cliRecordMode`。
+- `testRecordConfig = test.options.record ?? inheritedSuiteRecord`.
+- `cliRecordMode = config.record.enabled`.
+- `shouldRecord = cliRecordMode && testRecordConfig`.
+- `shouldUsePtyOnly = testRecordConfig && !cliRecordMode`.
 
-因此同一份 `{ record: true }` 测试，在不同 CLI 参数下会走 PTY-only 或完整录制两种路径。
+Same { record: true } test can run as PTY-only or full recording depending on CLI.
 
-## 3. 单 worker 执行细节
+## 3. Single-worker execution
 
-`runSuite`（洋葱模型）：
+runSuite (onion):
 
 1. `beforeAll`
-2. 当前 suite 测试
-3. 子 suite 递归
-4. `afterAll`（finally 中保证执行）
+2. Current suite tests
+3. Child suites recursively
+4. afterAll (in finally)
 
-`runTest`：
+`runTest`:
 
-1. `onTestStart` 先发给 Reporter。
-2. 构建 terminal（recording / ptyOnly / promptLineCount）。
-3. 按测试函数参数懒加载 fixture：`runBeforeEachFor`。
-4. `Promise.race(testFn, timeout)` 执行测试。
-5. 生成 `RunResult`（含 `recordingPath`）。
-6. finally：`clearSteps` → `runAfterEachFor` → `terminal.close`。
+1. onTestStart notifies Reporter first.
+2. Build terminal (recording / ptyOnly / promptLineCount).
+3. Lazy-load fixtures by test params: runBeforeEachFor.
+4. Promise.race(testFn, timeout) runs the test.
+5. Produce RunResult (with recordingPath).
+6. finally: clearSteps, runAfterEachFor, terminal.close.
 
-## 4. Scheduler（多 worker）
+## 4. Scheduler (multi-worker)
 
-对应 `packages/repterm/src/runner/scheduler.ts` / `worker.ts` / `worker-runner.ts`：
+See scheduler.ts / worker.ts / worker-runner.ts:
 
-1. 主进程创建 worker 子进程并等待 `ready`。
-2. 分发 suite 到空闲 worker（IPC 消息）。
-3. worker 内调用 `runSuite`，把每条结果实时回传。
-4. 主进程聚合结果并在完成后回收 worker。
+1. Main creates worker processes, waits for ready.
+2. Dispatch suites to idle workers (IPC).
+3. Worker runs runSuite, streams results back.
+4. Main aggregates and recycles workers.
 
-## 5. Reporter 与产物
+## 5. Reporter and artifacts
 
-- Reporter：`packages/repterm/src/cli/reporter.ts`
-  - `onTestStart` 打印 suite 层级。
-  - `onTestResult` 实时打印通过/失败。
-  - `onRunComplete` 输出总览与失败详情。
-- Artifact：`packages/repterm/src/runner/artifacts.ts`
-  - 录制测试时提供 `.cast` 路径。
-  - `recordingPath` 会回传到 Reporter。
+- Reporter: `packages/repterm/src/cli/reporter.ts`
+  - onTestStart prints suite hierarchy.
+  - onTestResult prints pass/fail.
+  - onRunComplete prints summary and failures.
+- Artifact: `packages/repterm/src/runner/artifacts.ts`
+  - Provides .cast path for recording tests.
+  - recordingPath is passed to Reporter.
 
-## 6. 关键排查点
+## 6. Key checks
 
-1. `--record` 下 0 测试：确认是否有 `{ record: true }`。
-2. fixture 未运行：确认测试参数是否请求该 fixture 名。
-3. 并行报序列化问题：避免 suite 结构混入不可克隆对象。
-4. 录制无文件：确认 `shouldRecord` 条件满足（CLI + test 都为 true）。
+1. 0 tests with --record: ensure { record: true }.
+2. Fixture not run: check test params request that fixture.
+3. Parallel serialization: avoid non-cloneable objects in suite.
+4. No recording file: ensure shouldRecord (CLI and test both true).
 
 ## See Also
 

@@ -1,14 +1,14 @@
 /**
- * 测试场景 7: Workload 创建和 Worker Pod 生成
+ * Test Scenario 7: Workload Creation and Worker Pod Generation
  *
- * 基于 `Workload创建和WorkerPod生成测试.md`：
- * - 创建 `replicas=2` 的 TensorFusionWorkload
- * - 等待 `status.workerCount` 变为 2
- * - 等待 worker Pod Ready
- * - 验证 worker Pod 数量与 `spec.replicas` 一致
- * - 验证 `status.workerCount` 正确更新
+ * Based on `Workload_Creation_and_WorkerPod_Generation_Test.md`:
+ * - Create `replicas=2` TensorFusionWorkload
+ * - Wait for `status.workerCount` to become 2
+ * - Wait for worker Pods to be Ready
+ * - Verify worker Pod count matches `spec.replicas`
+ * - Verify `status.workerCount` is updated correctly
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/07-workload-worker-pod-generation.ts
  */
 
@@ -103,13 +103,13 @@ async function waitForWorkerPods(
   throw new Error(`Timeout waiting worker pods for ${workloadName} reach ${expectedCount}`);
 }
 
-describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true }, () => {
-  test('创建 replicas=2 的 Workload 后生成对应 worker Pods', async (ctx) => {
+describe('Test Scenario 7: Workload Creation and Worker Pod Generation', { record: true }, () => {
+  test('Create replicas=2 Workload and generate corresponding worker Pods', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     try {
       await step(
-        '创建 TensorFusionWorkload（replicas=2）',
+        'Create TensorFusionWorkload (replicas=2)',
         {
           showStepTitle: false,
           typingSpeed: 90,
@@ -131,7 +131,7 @@ describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true 
       );
 
       await step(
-        '等待 Workload status.workerCount=2',
+        'Wait for Workload status.workerCount=2',
         {
           showStepTitle: false,
           pauseAfter: 1800,
@@ -151,7 +151,7 @@ describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true 
       );
 
       await step(
-        '等待 worker Pods 创建并 Ready',
+        'Wait for worker Pods to be created and Ready',
         {
           showStepTitle: false,
           typingSpeed: 80,
@@ -175,7 +175,7 @@ describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true 
       );
 
       await step(
-        '验证 worker Pod 数量与 replicas 一致',
+        'Verify worker Pod count matches replicas',
         {
           typingSpeed: 80,
           pauseAfter: 1800,
@@ -196,7 +196,7 @@ describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true 
       );
 
       await step(
-        '验证 status.workerCount 与 replicas 一致',
+        'Verify status.workerCount matches replicas',
         {
           showStepTitle: false,
           pauseAfter: 1500,
@@ -213,7 +213,7 @@ describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true 
       );
     } finally {
       await step(
-        '清理 TensorFusionWorkload',
+        'Clean up TensorFusionWorkload',
         {
           showStepTitle: false,
           typingSpeed: 70,
@@ -229,7 +229,7 @@ describe('测试场景 7: Workload 创建和 Worker Pod 生成', { record: true 
             const deleteResult = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);
             await expect(deleteResult).toBeSuccessful();
           } catch {
-            // 清理失败不覆盖主断言错误
+            // Cleanup failure does not override main assertion error
           }
         }
       );

@@ -1,9 +1,9 @@
-# API 速查表
+# API cheatsheet
 
-> 常用验证：`bun test packages/repterm/tests/unit`  
-> 运行示例：`bun run repterm packages/repterm/examples/<file>.ts`
+> Verify: `bun test packages/repterm/tests/unit`
+> Run example: `bun run repterm packages/repterm/examples/<file>.ts`
 
-## 测试 DSL
+## Test DSL
 
 ```ts
 import {
@@ -54,17 +54,17 @@ test('step demo', async ({ terminal }) => {
 });
 ```
 
-## 终端 API
+## Terminal API
 
 ```ts
-// 非交互：默认走 Bun.spawn，返回 CommandResult
+// Non-interactive: Bun.spawn, returns CommandResult
 const result = await terminal.run('echo hello');
 console.log(result.code, result.stdout, result.stderr, result.output, result.duration);
 
-// 录制/PTY 模式下需要精确 code 或干净 JSON 时，使用 silent
+// Use silent for exact code or clean JSON in recording/PTY
 const parsed = await terminal.run('kubectl get pod x -o json', { silent: true });
 
-// 交互：拿到 PTYProcess 控制器
+// Interactive: get PTYProcess controller
 const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
 await proc.expect('>>>');
 await proc.send('print("hi")\n');
@@ -76,12 +76,12 @@ const finalResult = await proc.wait();
 await terminal.waitForText('done', { timeout: 8000, stripAnsi: true });
 const snapshot = await terminal.snapshot();
 
-// 多终端
+// Multi-terminal
 const terminal2 = await terminal.create();
 await terminal2.run('echo from second terminal');
 ```
 
-## 断言 API
+## Assertion API
 
 ```ts
 const result = await terminal.run('command');
@@ -134,7 +134,7 @@ describe('hooks', () => {
 });
 ```
 
-## 插件 API
+## Plugin API
 
 ```ts
 import { definePlugin, defineConfig, createTestWithPlugins } from 'repterm';
@@ -163,11 +163,11 @@ test('plugin demo', async (ctx) => {
 });
 ```
 
-## Kubectl 插件速查
+## Kubectl plugin cheatsheet
 
 ```ts
 import { defineConfig, createTestWithPlugins, expect } from 'repterm';
-import { kubectlPlugin, pod, deployment } from '@repterm/plugin-kubectl';
+import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
 
 const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: 'default' })] as const,

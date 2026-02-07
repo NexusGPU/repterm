@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { definePlugin, type BasePluginContext, type PluginHooks } from 'repterm';
+import { definePlugin, type BasePluginContext, type PluginHooks } from 'repterm-api';
 import {
     KubectlResult,
     ApplyResult,
@@ -210,10 +210,10 @@ export interface GetOptions {
 }
 
 /**
- * Watch 进程控制器
+ * Watch process controller
  */
 export interface WatchProcess {
-    /** 中断 watch 进程 (发送 Ctrl+C) */
+    /** Interrupt the watch process (sends Ctrl+C) */
     interrupt: () => Promise<void>;
 }
 
@@ -266,6 +266,8 @@ export interface KubectlMethods {
     getNamespace: () => string;
     /** Get the kubeconfig path */
     getKubeconfig: () => string | undefined;
+    /** Return shell command to set KUBECONFIG (e.g. for use in terminal.run). Example: setCluster('/path/to/kubeconfig') => "export KUBECONFIG='/path/to/kubeconfig'" */
+    setCluster: (kubeConfigPath: string) => string;
     /** Get cluster connection info */
     clusterInfo: () => Promise<ClusterInfo>;
 
@@ -341,7 +343,7 @@ export interface KubectlPluginOptions {
  * @example
  * ```ts
  * import { defineConfig, createTestWithPlugins } from 'repterm';
- * import { kubectlPlugin } from '@repterm/plugin-kubectl';
+ * import { kubectlPlugin } from '@nexusgpu/repterm-plugin-kubectl';
  *
  * const config = defineConfig({
  *   plugins: [kubectlPlugin({ namespace: 'test' })] as const,
@@ -389,7 +391,7 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                 waitForPod: async (name, status = 'Running', timeout = 60000) => {
                     const timeoutSec = Math.ceil(timeout / 1000);
 
-                    // 使用 kubectl wait 替代轮询，录制效果更好
+                    // Use kubectl wait instead of polling for cleaner recording
                     const cmd = buildCommand(
                         `wait --for=jsonpath='{.status.phase}'=${status} pod/${name} --timeout=${timeoutSec}s`
                     );
@@ -397,7 +399,7 @@ export function kubectlPlugin(options: KubectlPluginOptions = {}) {
                 },
 
                 apply: async (yaml: string): Promise<ApplyResult> => {
-                    // 使用 heredoc 语法避免录制时出现 quote> 提示符
+                    // Use heredoc to avoid quote> prompt in recording
                     const cmd = `cat <<'EOF' | kubectl -n ${currentNamespace} apply -f -
 ${yaml.trim()}
 EOF`;
@@ -419,7 +421,7 @@ EOF`;
                 },
 
                 get: ((resource: string, name?: string, options?: GetOptions): any => {
-                    // Watch 模式：启动持续 watch，返回 Promise<WatchProcess>
+                    // Watch mode: start continuous watch, return Promise<WatchProcess>
                     if (options?.watch) {
                         let args = name ? `get ${resource} ${name} -w` : `get ${resource} -w`;
                         if (options.selector) {
@@ -438,19 +440,18 @@ EOF`;
                         const cmd = buildCommand(args);
                         const proc = testContext.terminal.run(cmd);
 
-                        // ★ 修复：返回 Promise，等待命令输入完成后再返回
-                        // 调用方必须 await，确保 stepTitle 和命令输入完成
+                        // Return Promise so caller must await; ensures stepTitle and command input complete
                         return (async (): Promise<WatchProcess> => {
-                            await proc.start();  // 等待输入完成
+                            await proc.start?.();  // Wait for input to finish
                             return {
                                 interrupt: async () => {
-                                    await proc.interrupt();
+                                    await proc.interrupt?.();
                                 }
                             };
                         })();
                     }
 
-                    // 普通模式：获取 JSON 数据
+                    // Normal mode: fetch JSON data
                     return (async () => {
                         let args = name ? `get ${resource} ${name}` : `get ${resource}`;
                         if (options?.selector) {
@@ -539,13 +540,13 @@ EOF`;
                     try {
                         const cmd = buildCommand(`get ${resource} ${name} -o name`);
                         const result = await testContext.terminal.run(`${cmd}`);
-                        // 在 PTY 模式下，使用 silent 执行获取干净输出
+                        // In PTY mode, use silent run for clean output
                         let stdout = result.stdout;
                         if (testContext.terminal.isPtyMode?.()) {
                             const silentResult = await testContext.terminal.run(cmd, { silent: true });
                             stdout = silentResult.stdout;
                         }
-                        // 兼容两种格式：deployment/name 和 deployment.apps/name
+                        // Support both formats: deployment/name and deployment.apps/name
                         return stdout.includes(`/${name}`);
                     } catch {
                         return false;
@@ -559,6 +560,11 @@ EOF`;
                 getNamespace: () => currentNamespace,
 
                 getKubeconfig: () => kubeconfig,
+
+                setCluster: (kubeConfigPath: string): string => {
+                    const quoted = kubeConfigPath.replace(/'/g, "'\\''");
+                    return `export KUBECONFIG='${quoted}'`;
+                },
 
                 clusterInfo: async (): Promise<ClusterInfo> => {
                     try {
@@ -828,13 +834,13 @@ EOF`;
                 waitForService: async (name: string, timeout = 60000): Promise<ServiceEndpoint> => {
                     const timeoutSec = Math.ceil(timeout / 1000);
 
-                    // 使用 kubectl wait 等待 Endpoints 有地址，替代轮询
+                    // Use kubectl wait for Endpoints to have addresses instead of polling
                     const waitCmd = buildCommand(
                         `wait --for=jsonpath='{.subsets[0].addresses}' endpoints/${name} --timeout=${timeoutSec}s`
                     );
                     await testContext.terminal.run(waitCmd);
 
-                    // 获取 Service 和 Endpoints 详细信息
+                    // Fetch Service and Endpoints details
                     const svc = await methods.get<{
                         spec?: { clusterIP?: string; ports?: Array<{ port: number }> };
                     }>('service', name);

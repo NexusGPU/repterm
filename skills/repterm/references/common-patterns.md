@@ -1,8 +1,8 @@
-# 常见代码模式
+# Common code patterns
 
-> 这些模板对齐当前源码签名，可直接复制后微调。
+> Templates match current API; copy and adjust.
 
-## 1. 基础测试
+## 1. Basic test
 
 ```ts
 import { test, expect, describe } from 'repterm';
@@ -22,14 +22,14 @@ describe('basic', () => {
 });
 ```
 
-## 2. 录制与 PTY-only
+## 2. Recording and PTY-only
 
 ```ts
 import { test, describe } from 'repterm';
 
-// 全 suite 标记 record: true
-// - CLI 不带 --record：进入 PTY-only（无 cast）
-// - CLI 带 --record：进入完整录制（asciinema + tmux）
+// Whole suite record: true
+// - CLI without --record: PTY-only (no cast)
+// - CLI with --record: full recording (asciinema + tmux)
 describe('recordable suite', { record: true }, () => {
   test('demo', async ({ terminal }) => {
     await terminal.run('ls -la');
@@ -37,13 +37,13 @@ describe('recordable suite', { record: true }, () => {
   });
 });
 
-// 单测标记
+// Single test marker
 test('single record case', { record: true }, async ({ terminal }) => {
   await terminal.run('pwd');
 });
 ```
 
-## 3. 交互命令
+## 3. Interactive commands
 
 ```ts
 import { test } from 'repterm';
@@ -60,7 +60,7 @@ test('interactive python', async ({ terminal }) => {
 });
 ```
 
-## 4. Hooks + 懒加载 Fixture
+## 4. Hooks + lazy fixtures
 
 ```ts
 import { test, describe, beforeEach, afterEach, beforeAll, afterAll, expect } from 'repterm';
@@ -90,7 +90,7 @@ describe('fixtures', () => {
 });
 ```
 
-## 5. 多终端
+## 5. Multi-terminal
 
 ```ts
 import { test, expect, describe } from 'repterm';
@@ -107,7 +107,7 @@ describe('multi terminal', { record: true }, () => {
 });
 ```
 
-## 6. 插件接入（defineConfig）
+## 6. Plugin setup (defineConfig)
 
 ```ts
 import { defineConfig, definePlugin, createTestWithPlugins, expect } from 'repterm';
@@ -131,11 +131,11 @@ test('plugin test', async (ctx) => {
 });
 ```
 
-## 7. Kubectl 插件
+## 7. Kubectl plugin
 
 ```ts
 import { defineConfig, createTestWithPlugins, expect } from 'repterm';
-import { kubectlPlugin, pod, deployment } from '@repterm/plugin-kubectl';
+import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
 
 const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: 'default' })] as const,
@@ -152,13 +152,13 @@ test('deployment ready', async (ctx) => {
   await expect(pod(k, 'demo')).toBeRunning();
   await expect(deployment(k, 'demo')).toHaveReadyReplicas(2);
 
-  // watch 模式需要手动中断
+  // watch must be interrupted
   const watch = await k.get('pods', undefined, { watch: true, output: 'wide' });
   await watch.interrupt();
 });
 ```
 
-## 8. 调试输出
+## 8. Debug output
 
 ```ts
 import { test } from 'repterm';

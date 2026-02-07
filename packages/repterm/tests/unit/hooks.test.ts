@@ -179,7 +179,7 @@ describe('HooksRegistry', () => {
 
             hooksRegistry.clear();
 
-            // 创建一个 mock suite
+            // Create a mock suite
             const mockSuite: TestSuite = {
                 id: 'test-suite-id',
                 name: 'Test Suite',
@@ -212,13 +212,13 @@ describe('HooksRegistry', () => {
                 });
             });
 
-            // 获取注册的 suite ID
+            // Get registered suite ID
             const { getTests } = await import('../../src/api/test.js');
             const suites = getTests();
             const mySuite = suites.find((s) => s.name === 'My Suite');
             suiteId = mySuite?.id;
 
-            // 创建 mock suite 用于测试
+            // Create mock suite for test
             const mockSuite: TestSuite = {
                 id: suiteId!,
                 name: 'My Suite',
@@ -437,7 +437,7 @@ describe('HooksRegistry', () => {
 
             await hooksRegistry.runAfterAllFor(mockSuite, {});
 
-            // afterAll 应该逆序执行
+            // afterAll should run in reverse order
             expect(executionOrder).toEqual(['third', 'second', 'first']);
         });
     });
@@ -472,7 +472,7 @@ describe('HooksRegistry', () => {
                 config: {},
             };
 
-            // 模拟完整的测试执行流程
+            // Simulate full test run
             const context = await hooksRegistry.runBeforeAllFor(mockSuite, {});
             executionOrder.push('test');
             await hooksRegistry.runAfterAllFor(mockSuite, context);
@@ -504,7 +504,7 @@ describe('HooksRegistry', () => {
             const parentSuite = suites.find((s) => s.name === 'Parent');
             const childSuite = parentSuite?.suites?.find((s) => s.name === 'Child');
 
-            // 只运行 child suite 的 beforeAll
+            // Run only child suite beforeAll
             const mockChildSuite: TestSuite = {
                 id: childSuite!.id,
                 name: 'Child',

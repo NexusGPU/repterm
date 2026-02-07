@@ -1,45 +1,45 @@
-# 单元测试矩阵
+# Unit test matrix
 
-> 全量：`bun test packages/repterm/tests/unit`  
-> 单文件：`bun test packages/repterm/tests/unit/<file>.test.ts`
+> Full run: `bun test packages/repterm/tests/unit`
+> Single file: `bun test packages/repterm/tests/unit/<file>.test.ts`
 
-## 1. 优先级约定
+## 1. Priority
 
-| 标记 | 含义 | 建议 |
+| Level | Meaning | When to run |
 | --- | --- | --- |
-| 🔴 P0 | 核心回归 | 每次改动都优先跑 |
-| 🟡 P1 | 模块回归 | 改到对应模块时跑 |
-| 🟢 P2 | 扩展/边界 | 完整回归时跑 |
+| 🔴 P0 | Core regression | Run first on every change |
+| 🟡 P1 | Module regression | When touching that module |
+| 🟢 P2 | Edge/extension | Full regression |
 
-## 2. 文件矩阵（按当前仓库）
+## 2. File matrix
 
-| 优先级 | 文件 | 主要覆盖 |
+| Priority | File | Coverage |
 | --- | --- | --- |
-| 🔴 P0 | `terminal.test.ts` | `terminal.run/create/close`、模式切换、输出行为 |
-| 🔴 P0 | `expect.test.ts` | 命令结果/终端 matcher 行为 |
-| 🔴 P0 | `hooks.test.ts` | fixture 懒加载、before/after 生命周期 |
-| 🔴 P0 | `runner-lifecycle.test.ts` | 洋葱模型、suite/context 继承 |
-| 🟡 P1 | `config.test.ts` | 配置合并与边界值 |
-| 🟡 P1 | `loader.test.ts` | 测试发现、setup 加载、过滤助手 |
-| 🟡 P1 | `reporter.test.ts` | 流式输出与汇总展示 |
-| 🟡 P1 | `artifacts.test.ts` | run 目录与 cast/log/snapshot 路径 |
-| 🟡 P1 | `session.test.ts` | PTY session 生命周期 |
-| 🟡 P1 | `recorder.test.ts` | asciinema recorder 生命周期 |
-| 🟡 P1 | `registry.test.ts` | suite 注册栈、文件级 suite |
-| 🟡 P1 | `describe.test.ts` | describe 嵌套与选项继承 |
-| 🟢 P2 | `index.test.ts` | 入口导出完整性 |
-| 🟢 P2 | `steps.test.ts` | `test.step` 记录与清理 |
-| 🟢 P2 | `describe-steps.test.ts` | describe + step 组合行为 |
-| 🟢 P2 | `runner-streaming.test.ts` | `onResult` 流式回调 |
-| 🟢 P2 | `parallel-scheduler.test.ts` | 并行调度边界 |
-| 🟢 P2 | `scheduler.test.ts` | scheduler 聚合路径 |
-| 🟢 P2 | `dependencies.test.ts` | 录制依赖检测 |
+| 🔴 P0 | `terminal.test.ts` | `terminal.run/create/close`, mode switch, output |
+| 🔴 P0 | `expect.test.ts` | command/terminal matchers |
+| 🔴 P0 | `hooks.test.ts` | fixture lazy load, before/after lifecycle |
+| 🔴 P0 | `runner-lifecycle.test.ts` | onion model, suite/context inheritance |
+| 🟡 P1 | `config.test.ts` | config merge and boundaries |
+| 🟡 P1 | `loader.test.ts` | test discovery, setup load, filter helpers |
+| 🟡 P1 | `reporter.test.ts` | streaming output and summary |
+| 🟡 P1 | `artifacts.test.ts` | run dir and cast/log/snapshot paths |
+| 🟡 P1 | `session.test.ts` | PTY session lifecycle |
+| 🟡 P1 | `recorder.test.ts` | asciinema recorder lifecycle |
+| 🟡 P1 | `registry.test.ts` | suite registration, file-level suite |
+| 🟡 P1 | `describe.test.ts` | describe nesting and option inheritance |
+| 🟢 P2 | `index.test.ts` | entry exports |
+| 🟢 P2 | `steps.test.ts` | test.step record and cleanup |
+| 🟢 P2 | `describe-steps.test.ts` | describe + step behavior |
+| 🟢 P2 | `runner-streaming.test.ts` | onResult streaming |
+| 🟢 P2 | `parallel-scheduler.test.ts` | parallel scheduler edge |
+| 🟢 P2 | `scheduler.test.ts` | scheduler aggregation |
+| 🟢 P2 | `dependencies.test.ts` | recording dependency check |
 | 🟢 P2 | `timing.test.ts` | timer/sleep/formatDuration |
-| 🟢 P2 | `output-capture-formula.test.ts` | 录制输出截取公式 |
+| 🟢 P2 | `output-capture-formula.test.ts` | recording output capture formula |
 
-## 3. 场景化最小回归
+## 3. Minimal regression sets
 
-### 3.1 终端与录制相关
+### 3.1 Terminal and recording
 
 ```bash
 bun test packages/repterm/tests/unit/terminal.test.ts \
@@ -48,7 +48,7 @@ bun test packages/repterm/tests/unit/terminal.test.ts \
          packages/repterm/tests/unit/output-capture-formula.test.ts
 ```
 
-### 3.2 Runner / CLI / Hooks 相关
+### 3.2 Runner / CLI / Hooks
 
 ```bash
 bun test packages/repterm/tests/unit/runner-lifecycle.test.ts \
@@ -58,7 +58,7 @@ bun test packages/repterm/tests/unit/runner-lifecycle.test.ts \
          packages/repterm/tests/unit/artifacts.test.ts
 ```
 
-### 3.3 DSL / 断言 / 导出相关
+### 3.3 DSL / Assertions / Exports
 
 ```bash
 bun test packages/repterm/tests/unit/expect.test.ts \
@@ -67,13 +67,13 @@ bun test packages/repterm/tests/unit/expect.test.ts \
          packages/repterm/tests/unit/index.test.ts
 ```
 
-## 4. 完整回归建议
+## 4. Full regression
 
 ```bash
 bun test packages/repterm/tests/unit
 ```
 
-若改动涉及 `plugin-kubectl` 文档或类型，建议额外跑一次示例冒烟：
+If you changed plugin-kubectl docs or types, run plugin example smoke:
 
 ```bash
 bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts

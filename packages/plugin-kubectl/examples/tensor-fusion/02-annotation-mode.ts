@@ -1,12 +1,12 @@
 /**
- * 测试场景 2: 正常资源分配 - 使用 Pod Annotation
+ * Test Scenario 2: Normal Resource Allocation - Using Pod Annotation
  *
- * 验证通过在 Deployment Pod Template 中添加 Tensor Fusion annotation：
- * - Webhook 自动创建 TensorFusionWorkload
- * - GPU 资源正确分配
- * - Pod 成功调度并运行
+ * Verify that by adding Tensor Fusion annotations to Deployment Pod Template:
+ * - Webhook automatically creates TensorFusionWorkload
+ * - GPU resources are correctly allocated
+ * - Pod is successfully scheduled and running
  *
- * 运行方式:
+ * Run with:
  *   bun run repterm packages/plugin-kubectl/examples/tensor-fusion/02-annotation-mode.ts
  */
 
@@ -27,14 +27,14 @@ import {
 
 const DEPLOYMENT_NAME = 'test-workload-annotation';
 
-describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }, () => {
-    test('Pod Annotation 模式资源分配完整流程', async (ctx) => {
+describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { record: true }, () => {
+    test('Pod Annotation mode resource allocation complete flow', async (ctx) => {
         const { kubectl } = ctx.plugins;
         let gpuName: string;
         let initialTflops: string;
 
-        // ===== Step 1: 准备环境 =====
-        await step('获取测试 GPU', {
+        // ===== Step 1: Prepare environment =====
+        await step('Acquire test GPU', {
             showStepTitle: false,
             typingSpeed: 60,
             pauseAfter: 1000
@@ -42,7 +42,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             gpuName = await getFirstGpuName(kubectl);
         });
 
-        await step('记录初始可用资源', {
+        await step('Record initial available resources', {
             typingSpeed: 60,
             pauseAfter: 1500
         }, async () => {
@@ -50,8 +50,8 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             initialTflops = available.tflops;
         });
 
-        // ===== Step 2: 创建带 Annotation 的 Deployment（核心操作）=====
-        await step('创建带 Annotation 的 Deployment', {
+        // ===== Step 2: Create annotated Deployment (core operation) =====
+        await step('Create annotated Deployment', {
             showStepTitle: false,
             typingSpeed: 100,
             pauseAfter: 3000
@@ -67,7 +67,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             await expect(result).toBeSuccessful();
         });
 
-        await step('验证 Deployment 的 Tensor Fusion annotations', {
+        await step('Verify Deployment Tensor Fusion annotations', {
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {
@@ -84,8 +84,8 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
         });
 
 
-        // ===== Step 3: 验证 Deployment 和 Pod 状态 =====
-        await step('检查 Deployment 可用状态', {
+        // ===== Step 3: Verify Deployment and Pod status =====
+        await step('Check Deployment available status', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
@@ -98,7 +98,7 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             });
         });
 
-        await step('验证 Pod 运行状态', {
+        await step('Verify Pod running status', {
             typingSpeed: 80,
             pauseAfter: 2000
         }, async () => {
@@ -114,8 +114,8 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             expect(pods[0].phase).toBe('Running');
         });
 
-        // ===== Step 4: 验证 GPU 资源分配结果 =====
-        await step('检查 GPU 可用资源变化', {
+        // ===== Step 4: Verify GPU resource allocation results =====
+        await step('Check GPU available resources change', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2500
@@ -125,12 +125,12 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             const currentTflops = parseTflops(available.tflops);
             const initialTflopsNum = parseTflops(initialTflops);
 
-            // GPU 资源应该减少
+            // GPU resources should decrease
             expect(currentTflops).toBeLessThan(initialTflopsNum);
         });
 
-        // ===== 清理 =====
-        await step('删除 Deployment', {
+        // ===== Cleanup =====
+        await step('Delete Deployment', {
             showStepTitle: false,
             typingSpeed: 80,
             pauseAfter: 2000
@@ -139,23 +139,23 @@ describe('测试场景 2: 正常资源分配 - Pod Annotation', { record: true }
             await expect(result).toBeSuccessful();
         });
 
-        await step('等待资源释放并验证', {
+        await step('Wait for resource release and verify', {
             pauseAfter: 2000
         }, async () => {
             await sleep(5000);
 
-            // 验证 TensorFusionWorkload 自动清理
+            // Verify TensorFusionWorkload auto cleanup
             const workloadExists = await kubectl.exists('tensorfusionworkload', DEPLOYMENT_NAME);
             if (workloadExists) {
                 await kubectl.delete('tensorfusionworkload', DEPLOYMENT_NAME, { force: true });
             }
 
-            // 验证 GPU 资源已释放（TFlops 应该恢复）
+            // Verify GPU resources released (TFlops should recover)
             const afterRelease = await getGpuAvailable(kubectl, gpuName);
             const releasedTflops = parseTflops(afterRelease.tflops);
             const initialTflopsNum = parseTflops(initialTflops);
 
-            // 允许小误差，但应该接近初始值
+            // Allow small tolerance, but should approach initial value
             expect(releasedTflops).toBeGreaterThanOrEqual(initialTflopsNum - 100);
         });
     });

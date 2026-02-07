@@ -7,7 +7,8 @@
  * @packageDocumentation
  */
 
-import { expect, type MatcherResult } from 'repterm';
+import { expect } from 'bun:test';
+import type { MatcherResult } from 'repterm-api';
 import type { KubectlMethods } from './index.js';
 import { KubectlResult } from './result.js';
 

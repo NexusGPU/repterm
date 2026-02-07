@@ -1,17 +1,17 @@
-# @repterm/plugin-kubectl 指南
+# @nexusgpu/repterm-plugin-kubectl guide
 
-## 1. 快速定位
+## 1. Where to look
 
-- 核心实现：`packages/plugin-kubectl/src/index.ts`
-- Matcher：`packages/plugin-kubectl/src/matchers.ts`
-- 类型补充：`packages/plugin-kubectl/src/matchers.d.ts`
-- 示例：`packages/plugin-kubectl/examples/*.ts`
+- Core: `packages/plugin-kubectl/src/index.ts`
+- Matchers: `packages/plugin-kubectl/src/matchers.ts`
+- Types: `packages/plugin-kubectl/src/matchers.d.ts`
+- Examples: `packages/plugin-kubectl/examples/*.ts`
 
-## 2. 正确的装配方式
+## 2. Setup
 
 ```ts
 import { defineConfig, createTestWithPlugins } from 'repterm';
-import { kubectlPlugin } from '@repterm/plugin-kubectl';
+import { kubectlPlugin } from '@nexusgpu/repterm-plugin-kubectl';
 
 const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: 'default' })] as const,
@@ -20,31 +20,31 @@ const config = defineConfig({
 const test = createTestWithPlugins(config);
 ```
 
-> 不再推荐使用旧的 runtime 手工构造示例；外部使用统一走 `defineConfig(...)`。
+> Prefer defineConfig(); avoid manual runtime setup.
 
-## 3. 插件结构（源码对齐）
+## 3. Plugin structure
 
-`kubectlPlugin(options)` 返回 `definePlugin('kubectl', setup)` 的结果，`setup` 输出三部分：
+kubectlPlugin returns definePlugin('kubectl', setup). setup exposes:
 
-1. `methods`：挂到 `ctx.plugins.kubectl`。
-2. `context`：挂到 `ctx.kubectl`（当前 namespace / kubeconfig）。
-3. `hooks`：当前主要用于 before/after test 的调试提示。
+1. methods -> ctx.plugins.kubectl
+2. context -> ctx.kubectl (namespace / kubeconfig)
+3. hooks: before/after test debug
 
-## 4. 主要 API
+## 4. Main API
 
-### 4.1 基础执行与读取
+### 4.1 Run and read
 
-- `run(args)`：执行 `kubectl ...` 并返回输出文本。
-- `command(args)`：只生成命令字符串。
-- `get(resource, name?, options?)`：
-  - 默认返回 JSON 解析结果。
-  - `options.jqFilter` 支持追加 `| jq '...'`。
-  - `options.watch: true` 返回 `WatchProcess`（包含 `interrupt()`）。
+- run(args): run kubectl, return output.
+- command(args): build command string only.
+- `get(resource, name?, options?)`:
+  - Default: parsed JSON.
+  - options.jqFilter appends | jq ...
+  - watch: true returns WatchProcess (interrupt()).
 - `getJsonPath(resource, name, jsonPath, options?)`
 - `exists(resource, name)`
 - `clusterInfo()`
 
-### 4.2 资源生命周期
+### 4.2 Resource lifecycle
 
 - `apply(yaml)`
 - `delete(resource, name, { force? })`
@@ -54,7 +54,7 @@ const test = createTestWithPlugins(config);
 - `waitForReplicas(resource, name, count, timeout?)`
 - `waitForService(name, timeout?)`
 
-### 4.3 管理与运维能力
+### 4.3 Operations
 
 - `logs(pod, options?)`
 - `exec(pod, command, options?)`
@@ -64,20 +64,20 @@ const test = createTestWithPlugins(config);
 - `label(resource, name, labels)`
 - `annotate(resource, name, annotations)`
 - `rollout.status/history/undo/restart/pause/resume`
-- `portForward(resource, ports, options?)`（返回 `stop()`）
+- `portForward(resource, ports, options?)` (returns stop())
 - `getEvents(options?)`
 - `getNodes(options?)`
 - `cp(source, dest, options?)`
 
-## 5. Watch 与 PTY 模式注意事项
+## 5. Watch and PTY
 
-1. `get(..., { watch: true })` 返回持续进程控制器，必须 `await watch.interrupt()` 主动收尾。
-2. 录制或 PTY 模式下，插件内部会在 JSON 解析路径优先走 `silent` 二次执行获取干净 stdout。
-3. 断言退出码时，优先在非 PTY/silent 结果上判断，避免 `code === -1` 干扰。
+1. get(..., { watch: true }) returns controller; must await watch.interrupt().
+2. In recording/PTY, plugin may use silent run for clean JSON.
+3. Prefer silent or non-PTY for exit code assertions.
 
-## 6. Matcher 与资源包装器
+## 6. Matchers and resource wrappers
 
-`matchers.ts` 会注册以下 matcher（核心新增项已包含）：
+matchers.ts registers:
 
 - `toBeSuccessful`
 - `toExistInCluster`
@@ -93,18 +93,18 @@ const test = createTestWithPlugins(config);
 - `toHaveCondition`
 - `toHaveStatusField`
 
-可用资源包装器：
+Resource wrappers:
 
-- 标准资源：`pod` / `deployment` / `service` / `statefulset` / `job` / `configmap` / `secret` / `resource` / `crd`
-- CRD 辅助：`gpupool` / `gpu` / `tensorfusionworkload` / `tensorfusionconnection`
+- Standard: `pod` / `deployment` / `service` / `statefulset` / `job` / `configmap` / `secret` / `resource` / `crd`
+- CRD helpers: `gpupool` / `gpu` / `tensorfusionworkload` / `tensorfusionconnection`
 
-> 按你的要求，这里只保留 CRD 辅助入口说明，不新增 Tensor Fusion 专章。
+> CRD helpers only; no separate Tensor Fusion section.
 
-## 7. 示例模板
+## 7. Example template
 
 ```ts
 import { defineConfig, createTestWithPlugins, expect } from 'repterm';
-import { kubectlPlugin, pod, deployment } from '@repterm/plugin-kubectl';
+import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
 
 const config = defineConfig({
   plugins: [kubectlPlugin({ namespace: 'default' })] as const,
@@ -126,13 +126,13 @@ test('deploy and verify', async (ctx) => {
 });
 ```
 
-## 8. 示例运行命令
+## 8. Run commands
 
 ```bash
-# 无集群可跑
+# No cluster
 bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
 
-# 需集群
+# With cluster
 bun run repterm packages/plugin-kubectl/examples/01-basic-kubectl.ts
 bun run repterm packages/plugin-kubectl/examples/05-matchers.ts
 ```

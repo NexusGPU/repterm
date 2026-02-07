@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 build/
+release/
 *.tsbuildinfo
 
 # Logs
@@ -33,3 +34,7 @@ Thumbs.db
 coverage/
 
 *.cast
+
+packages/repterm/release
+
+*.tgz
