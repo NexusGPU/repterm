@@ -5,7 +5,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
-import { discoverTests, isTestFile, filterSuites, filterTests } from '../../src/runner/loader.js';
+import { discoverTests } from '../../src/runner/loader.js';
 
 describe('discoverTests', () => {
     const testDir = '/tmp/repterm-test-loader';
@@ -93,82 +93,5 @@ describe('discoverTests', () => {
 
         expect(files).toHaveLength(1);
         expect(files[0]).toBe(filePath);
-    });
-});
-
-describe('isTestFile', () => {
-    test('returns true for .ts files', () => {
-        expect(isTestFile('test.ts')).toBe(true);
-    });
-
-    test('returns true for .js files', () => {
-        expect(isTestFile('test.js')).toBe(true);
-    });
-
-    test('returns false for other extensions', () => {
-        expect(isTestFile('test.json')).toBe(false);
-        expect(isTestFile('test.md')).toBe(false);
-    });
-});
-
-describe('filterSuites', () => {
-    const suites = [
-        { name: 'Unit Tests' },
-        { name: 'Integration Tests' },
-        { name: 'E2E Tests' },
-    ];
-
-    test('returns all suites when no pattern', () => {
-        const result = filterSuites(suites);
-        expect(result).toHaveLength(3);
-    });
-
-    test('filters by string pattern', () => {
-        const result = filterSuites(suites, 'Unit');
-        expect(result).toHaveLength(1);
-        expect(result[0].name).toBe('Unit Tests');
-    });
-
-    test('filters by regex pattern', () => {
-        const result = filterSuites(suites, /Integration|E2E/);
-        expect(result).toHaveLength(2);
-    });
-});
-
-describe('filterTests', () => {
-    const suites = [
-        {
-            name: 'Suite 1',
-            tests: [{ name: 'test login' }, { name: 'test logout' }, { name: 'test signup' }],
-        },
-        {
-            name: 'Suite 2',
-            tests: [{ name: 'test api' }],
-        },
-    ];
-
-    test('returns all tests when no pattern', () => {
-        const result = filterTests(suites);
-        expect(result).toHaveLength(2);
-        expect(result[0].tests).toHaveLength(3);
-    });
-
-    test('filters tests by string pattern', () => {
-        const result = filterTests(suites, 'login');
-        expect(result).toHaveLength(1);
-        expect(result[0].tests).toHaveLength(1);
-        expect(result[0].tests[0].name).toBe('test login');
-    });
-
-    test('filters tests by regex', () => {
-        const result = filterTests(suites, /log(in|out)/);
-        expect(result).toHaveLength(1);
-        expect(result[0].tests).toHaveLength(2);
-    });
-
-    test('removes suites with no matching tests', () => {
-        const result = filterTests(suites, 'api');
-        expect(result).toHaveLength(1);
-        expect(result[0].name).toBe('Suite 2');
     });
 });

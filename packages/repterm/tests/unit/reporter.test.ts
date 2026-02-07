@@ -75,6 +75,48 @@ describe('Reporter', () => {
             consoleSpy.mockRestore();
         });
 
+        test('prints terminal command logs in verbose mode', () => {
+            const logs: string[] = [];
+            consoleSpy = vi.spyOn(console, 'log').mockImplementation((msg) => {
+                if (msg) logs.push(String(msg));
+            });
+
+            const reporter = new Reporter({ verbose: true, colors: false });
+            const results: RunResult[] = [
+                {
+                    id: 'result-1',
+                    suiteId: 'suite-1',
+                    caseId: 'test-1',
+                    suiteName: 'My Suite',
+                    caseName: 'my failing test',
+                    status: 'fail',
+                    durationMs: 100,
+                    error: {
+                        message: 'Test failed',
+                        commandLogs: [
+                            {
+                                command: 'echo "hello from command"',
+                                code: 0,
+                                stdout: 'hello from command\n',
+                                stderr: '',
+                                output: 'hello from command\n',
+                                duration: 8,
+                            },
+                        ],
+                    },
+                    artifacts: [],
+                    suitePath: ['My Suite'],
+                },
+            ];
+
+            reporter.report(results);
+
+            expect(logs.some((l) => l.includes('Command logs'))).toBe(true);
+            expect(logs.some((l) => l.includes('echo "hello from command"'))).toBe(true);
+
+            consoleSpy.mockRestore();
+        });
+
         test('reports skipped tests', () => {
             consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
 

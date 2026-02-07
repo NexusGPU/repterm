@@ -287,42 +287,7 @@ export async function loadTestsWithSetup(
 /**
  * Check if a path is a test file based on extension
  */
-export function isTestFile(filePath: string): boolean {
+function isTestFile(filePath: string): boolean {
   const ext = extname(filePath);
   return ext === '.ts' || ext === '.js';
-}
-
-/**
- * Filter test suites by name or pattern
- */
-export function filterSuites<T extends { name: string }>(
-  suites: T[],
-  pattern?: string | RegExp
-): T[] {
-  if (!pattern) {
-    return suites;
-  }
-
-  const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
-
-  return suites.filter((suite) => regex.test(suite.name));
-}
-
-/**
- * Filter test cases within suites by name or pattern
- */
-export function filterTests<T extends { tests: { name: string }[] }>(
-  suites: T[],
-  pattern?: string | RegExp
-): T[] {
-  if (!pattern) {
-    return suites;
-  }
-
-  const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
-
-  return suites.map((suite) => ({
-    ...suite,
-    tests: suite.tests.filter((test) => regex.test(test.name)),
-  })).filter((suite) => suite.tests.length > 0);
 }

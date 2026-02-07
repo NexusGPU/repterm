@@ -228,6 +228,7 @@ export async function runTest(
         stack: (error as Error).stack,
         expected: (error as { expected?: unknown }).expected,
         actual: (error as { actual?: unknown }).actual,
+        commandLogs: terminal.getCommandLogs(),
       },
       artifacts: [],
       recordingPath,

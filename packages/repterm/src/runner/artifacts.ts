@@ -102,22 +102,3 @@ export function createArtifactManager(baseDir: string = '/tmp/repterm'): Artifac
   return new ArtifactManager({ baseDir, runId });
 }
 
-/**
- * Create artifact manager with a specific run ID
- * Used when restarting process (e.g., with tsx) to avoid duplicate folders
- */
-export function createArtifactManagerWithRunId(baseDir: string, runId: string): ArtifactManager {
-  return new ArtifactManager({ baseDir, runId });
-}
-
-/**
- * Create artifact manager for a specific worker
- * Ensures artifact isolation per worker in parallel execution
- */
-export function createWorkerArtifactManager(
-  baseDir: string,
-  workerId: number
-): ArtifactManager {
-  const runId = `worker-${workerId}-${generateRunId()}`;
-  return new ArtifactManager({ baseDir, runId });
-}

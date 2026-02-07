@@ -7,7 +7,7 @@
  * - 录制或交互模式：使用 PTY，支持复杂交互，但 exitCode 不可靠
  */
 
-import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, PluginFactory, TerminalWithPlugins } from '../runner/models.js';
+import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, PluginFactory, TerminalWithPlugins, CommandLog } from '../runner/models.js';
 import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
 import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
@@ -94,6 +94,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private sharedState: SharedTerminalState;
   private paneIndex?: number;  // Index of the tmux pane this terminal is bound to
   private nonInteractiveOutput: string = '';  // 存储非交互模式下的命令输出
+  private commandLogs: CommandLog[] = [];      // 存储测试期间执行过的命令
   private pluginFactory?: PluginFactory<any>;  // 插件工厂
   public plugins?: Record<string, unknown>;  // 插件实例（为新终端设置）
 
@@ -449,6 +450,20 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   appendNonInteractiveOutput(output: string): void {
     this.nonInteractiveOutput += output;
+  }
+
+  /**
+   * Record a command execution result for failure diagnostics
+   */
+  appendCommandLog(log: CommandLog): void {
+    this.commandLogs.push({ ...log });
+  }
+
+  /**
+   * Get command logs captured during the current test
+   */
+  getCommandLogs(): CommandLog[] {
+    return this.commandLogs.map((log) => ({ ...log }));
   }
 
   /**
@@ -1248,7 +1263,7 @@ class PTYProcessImpl implements PTYProcess {
         }
       }
 
-      return new CommandResultImpl({
+      const result = new CommandResultImpl({
         code: -1, // PTY 模式无法可靠获取退出码，设为 -1 表示不可用
         stdout: output,
         stderr: '',
@@ -1256,6 +1271,17 @@ class PTYProcessImpl implements PTYProcess {
         duration: Date.now() - this.startTime,
         command: this.command,
       });
+
+      this.terminal.appendCommandLog({
+        command: result.command,
+        code: result.code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        output: result.output,
+        duration: result.duration,
+      });
+
+      return result;
     } else {
       // Bun.spawn 模式：等待进程结束
       try {
@@ -1281,7 +1307,7 @@ class PTYProcessImpl implements PTYProcess {
         const combinedOutput = stdout + stderr;
         this.terminal.appendNonInteractiveOutput(combinedOutput);
 
-        return new CommandResultImpl({
+        const result = new CommandResultImpl({
           code: exitCode ?? -1,
           stdout,
           stderr,
@@ -1289,6 +1315,17 @@ class PTYProcessImpl implements PTYProcess {
           duration: Date.now() - this.startTime,
           command: this.command,
         });
+
+        this.terminal.appendCommandLog({
+          command: result.command,
+          code: result.code,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          output: result.output,
+          duration: result.duration,
+        });
+
+        return result;
       } catch (error) {
         // Ensure process is killed on error
         this.bunProcess?.kill();

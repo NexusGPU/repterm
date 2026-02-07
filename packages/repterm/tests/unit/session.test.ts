@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, afterEach } from 'bun:test';
-import { TerminalSession, createSession } from '../../src/terminal/session.js';
+import { TerminalSession } from '../../src/terminal/session.js';
 
 describe('TerminalSession', () => {
     let session: TerminalSession | null = null;
@@ -138,17 +138,5 @@ describe('TerminalSession', () => {
             session.kill();
             expect(() => session!.kill()).not.toThrow();
         });
-    });
-});
-
-describe('createSession', () => {
-    test('creates a TerminalSession instance', () => {
-        const session = createSession();
-        expect(session).toBeInstanceOf(TerminalSession);
-    });
-
-    test('passes config to TerminalSession', () => {
-        const session = createSession({ cols: 120, rows: 40 });
-        expect(session).toBeInstanceOf(TerminalSession);
     });
 });

@@ -153,10 +153,3 @@ export class TerminalSession extends EventEmitter {
     return this.pty?.pid;
   }
 }
-
-/**
- * Create a new terminal session
- */
-export function createSession(config?: SessionConfig): TerminalSession {
-  return new TerminalSession(config);
-}

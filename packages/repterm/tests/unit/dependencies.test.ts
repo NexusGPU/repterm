@@ -3,25 +3,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { checkCommand, checkDependencies } from '../../src/utils/dependencies.js';
-
-describe('checkCommand', () => {
-    test('returns true for available commands', async () => {
-        // 'ls' should be available on all Unix systems
-        const result = await checkCommand('ls');
-        expect(result).toBe(true);
-    });
-
-    test('returns true for node', async () => {
-        const result = await checkCommand('node');
-        expect(result).toBe(true);
-    });
-
-    test('returns false for non-existent commands', async () => {
-        const result = await checkCommand('nonexistent-command-12345');
-        expect(result).toBe(false);
-    });
-});
+import { checkDependencies } from '../../src/utils/dependencies.js';
 
 describe('checkDependencies', () => {
     test('returns all present when recording is false', async () => {

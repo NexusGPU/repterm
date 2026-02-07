@@ -226,6 +226,24 @@ describe('Runner Lifecycle Hooks', () => {
         expect(afterAllCalled).toBe(true);
     });
 
+    test('captures terminal command logs on test failure', async () => {
+        describeBlock('Failing Suite', () => {
+            registerTest('failing test with command', async ({ terminal }) => {
+                await terminal.run('echo "hello from command"');
+                throw new Error('boom');
+            });
+        });
+
+        const suites = getTests();
+        const suite = suites.find((s) => s.name === 'Failing Suite')!;
+
+        const results = await runSuite(suite, defaultOptions);
+
+        expect(results[0].status).toBe('fail');
+        expect(results[0].error?.commandLogs?.length).toBe(1);
+        expect(results[0].error?.commandLogs?.[0]?.command).toBe('echo "hello from command"');
+    });
+
     test('multiple independent suites run correctly', async () => {
         const executionOrder: string[] = [];
 

@@ -124,13 +124,6 @@ export async function step<T>(
 }
 
 /**
- * Get all steps recorded for the current test
- */
-export function getSteps(): Step[] {
-  return [...currentSteps];
-}
-
-/**
  * Clear steps (called after each test)
  */
 export function clearSteps(): void {

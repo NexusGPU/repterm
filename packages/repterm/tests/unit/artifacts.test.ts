@@ -9,8 +9,6 @@ import {
     ArtifactManager,
     generateRunId,
     createArtifactManager,
-    createArtifactManagerWithRunId,
-    createWorkerArtifactManager,
 } from '../../src/runner/artifacts.js';
 
 describe('generateRunId', () => {
@@ -124,25 +122,5 @@ describe('createArtifactManager', () => {
     test('uses default base dir when not specified', () => {
         const manager = createArtifactManager();
         expect(manager.getBaseDir()).toBe('/tmp/repterm');
-    });
-});
-
-describe('createArtifactManagerWithRunId', () => {
-    test('creates manager with specified run ID', () => {
-        const manager = createArtifactManagerWithRunId('/tmp/test', 'my-run-id');
-        expect(manager.getRunId()).toBe('my-run-id');
-    });
-});
-
-describe('createWorkerArtifactManager', () => {
-    test('creates manager with worker-prefixed run ID', () => {
-        const manager = createWorkerArtifactManager('/tmp/test', 1);
-        expect(manager.getRunId()).toMatch(/^worker-1-/);
-    });
-
-    test('different workers get different run IDs', () => {
-        const manager1 = createWorkerArtifactManager('/tmp/test', 1);
-        const manager2 = createWorkerArtifactManager('/tmp/test', 2);
-        expect(manager1.getRunId()).not.toBe(manager2.getRunId());
     });
 });

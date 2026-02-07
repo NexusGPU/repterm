@@ -281,6 +281,26 @@ export class Reporter {
           console.log(this.color('  Received: ', 'red') + this.formatValue(failure.error.actual));
         }
 
+        if (this.options.verbose && failure.error.commandLogs?.length) {
+          console.log('');
+          console.log(this.color('  Command logs:', 'dim'));
+
+          for (const log of failure.error.commandLogs) {
+            console.log(`    $ ${log.command}`);
+            console.log(this.color(`      exit=${log.code} duration=${log.duration}ms`, 'dim'));
+
+            if (log.stdout.trim()) {
+              console.log(this.color('      stdout:', 'dim'));
+              console.log(this.formatIndentedBlock(log.stdout, '        '));
+            }
+
+            if (log.stderr.trim()) {
+              console.log(this.color('      stderr:', 'dim'));
+              console.log(this.formatIndentedBlock(log.stderr, '        '));
+            }
+          }
+        }
+
         if (failure.error.stack && this.options.verbose) {
           console.log('');
           console.log(this.color('  Stack:', 'dim'));
@@ -388,6 +408,17 @@ export class Reporter {
       return `"${value}"`;
     }
     return JSON.stringify(value);
+  }
+
+  /**
+   * Indent multi-line text blocks for verbose diagnostics
+   */
+  private formatIndentedBlock(text: string, indent: string): string {
+    return text
+      .replace(/\n+$/, '')
+      .split('\n')
+      .map((line) => `${indent}${line}`)
+      .join('\n');
   }
 
   /**

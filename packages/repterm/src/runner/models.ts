@@ -271,11 +271,21 @@ export interface RunResult {
   recordingPath?: string;
 }
 
+export interface CommandLog {
+  command: string;
+  code: number;
+  stdout: string;
+  stderr: string;
+  output: string;
+  duration: number;
+}
+
 export interface TestError {
   message: string;
   stack?: string;
   expected?: unknown;
   actual?: unknown;
+  commandLogs?: CommandLog[];
 }
 
 export interface Artifact {

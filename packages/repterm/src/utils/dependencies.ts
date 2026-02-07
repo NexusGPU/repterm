@@ -4,9 +4,9 @@
  */
 
 /**
- * Check if a command is available
+ * Check if a command is available (internal)
  */
-export async function checkCommand(command: string): Promise<boolean> {
+async function checkCommand(command: string): Promise<boolean> {
   const proc = Bun.spawn(['which', command], {
     stdout: 'ignore',
     stderr: 'ignore',
