@@ -1,10 +1,10 @@
 /**
  * Artifact directory manager and path helpers
- * Manages test artifacts (recordings, logs, snapshots)
+ * Manages test artifacts (recordings)
  */
 
 import { mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { randomBytes } from 'crypto';
 
 export interface ArtifactConfig {
@@ -40,27 +40,6 @@ export class ArtifactManager {
   }
 
   /**
-   * Get path for a log artifact
-   */
-  getLogPath(testId: string): string {
-    return join(this.runDir, `${testId}.log`);
-  }
-
-  /**
-   * Get path for a snapshot artifact
-   */
-  getSnapshotPath(testId: string, snapshotIndex: number): string {
-    return join(this.runDir, `${testId}-snapshot-${snapshotIndex}.txt`);
-  }
-
-  /**
-   * Get the run directory path
-   */
-  getRunDir(): string {
-    return this.runDir;
-  }
-
-  /**
    * Get the base artifacts directory
    */
   getBaseDir(): string {
@@ -72,16 +51,6 @@ export class ArtifactManager {
    */
   getRunId(): string {
     return this.runId;
-  }
-
-  /**
-   * Ensure a directory exists
-   */
-  static ensureDir(path: string): void {
-    const dir = dirname(path);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
   }
 }
 

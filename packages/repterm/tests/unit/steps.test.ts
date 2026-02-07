@@ -25,7 +25,7 @@ describe('steps', () => {
         });
 
         test('propagates errors from step function', async () => {
-            await expect(
+            expect(
                 step('failing step', async () => {
                     throw new Error('Step failed');
                 })

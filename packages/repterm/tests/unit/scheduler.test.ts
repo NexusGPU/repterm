@@ -1,52 +1,44 @@
 /**
- * Unit test for scheduler aggregation
- * Tests the parallel test scheduler logic
+ * Unit tests for src/runner/scheduler.ts - Parallel test scheduler
  */
 
 import { describe, test, expect } from 'bun:test';
-
-// Note: These tests will be uncommented once scheduler is implemented
-// For now, placeholder tests that demonstrate expected behavior
+import { Scheduler, createScheduler } from '../../src/runner/scheduler.js';
+import { loadConfig } from '../../src/runner/config.js';
 
 describe('Scheduler', () => {
-  test('distributes tests across workers', () => {
-    // Mock test suite with 6 tests
-    const testCount = 6;
-    const workerCount = 3;
+    const defaultConfig = loadConfig({ parallel: { workers: 2 } });
 
-    // Each worker should get ~2 tests
-    const testsPerWorker = Math.ceil(testCount / workerCount);
+    describe('constructor', () => {
+        test('creates a scheduler with options', () => {
+            const scheduler = new Scheduler({
+                config: defaultConfig,
+                artifactBaseDir: '/tmp/artifacts',
+            });
+            expect(scheduler).toBeInstanceOf(Scheduler);
+        });
+    });
 
-    expect(testsPerWorker).toBe(2);
-  });
+    describe('run()', () => {
+        test('throws error for single worker mode', async () => {
+            const singleWorkerConfig = loadConfig({ parallel: { workers: 1 } });
+            const scheduler = new Scheduler({
+                config: singleWorkerConfig,
+                artifactBaseDir: '/tmp/artifacts',
+            });
 
-  test('aggregates results from all workers', () => {
-    // Mock results from 3 workers
-    const workerResults = [
-      { passed: 2, failed: 0 },
-      { passed: 1, failed: 1 },
-      { passed: 2, failed: 0 },
-    ];
+            await expect(scheduler.run([])).rejects.toThrow('Scheduler should not be used for single worker');
+        });
+    });
+});
 
-    // Aggregate
-    const totals = workerResults.reduce(
-      (acc, r) => ({
-        passed: acc.passed + r.passed,
-        failed: acc.failed + r.failed,
-      }),
-      { passed: 0, failed: 0 }
-    );
-
-    expect(totals.passed).toBe(5);
-    expect(totals.failed).toBe(1);
-  });
-
-  test('handles worker failures gracefully', () => {
-    // Simulate worker crash scenario
-    const expectedWorkers = 3;
-    const completedWorkers = 2;
-
-    // Should still collect results from completed workers
-    expect(completedWorkers).toBeLessThan(expectedWorkers);
-  });
+describe('createScheduler', () => {
+    test('creates a Scheduler instance', () => {
+        const config = loadConfig({ parallel: { workers: 2 } });
+        const scheduler = createScheduler({
+            config,
+            artifactBaseDir: '/tmp/artifacts',
+        });
+        expect(scheduler).toBeInstanceOf(Scheduler);
+    });
 });

@@ -68,40 +68,6 @@ describe('ArtifactManager', () => {
             expect(path).toBe(join(testBaseDir, testRunId, 'test-1.cast'));
         });
     });
-
-    describe('getLogPath()', () => {
-        test('returns path for log file', () => {
-            const path = manager.getLogPath('test-1');
-            expect(path).toBe(join(testBaseDir, testRunId, 'test-1.log'));
-        });
-    });
-
-    describe('getSnapshotPath()', () => {
-        test('returns path for snapshot file', () => {
-            const path = manager.getSnapshotPath('test-1', 0);
-            expect(path).toBe(join(testBaseDir, testRunId, 'test-1-snapshot-0.txt'));
-        });
-
-        test('includes snapshot index in path', () => {
-            const path = manager.getSnapshotPath('test-1', 5);
-            expect(path).toBe(join(testBaseDir, testRunId, 'test-1-snapshot-5.txt'));
-        });
-    });
-
-    describe('getRunDir()', () => {
-        test('returns the run directory path', () => {
-            const runDir = manager.getRunDir();
-            expect(runDir).toBe(join(testBaseDir, testRunId));
-        });
-    });
-
-    describe('ensureDir()', () => {
-        test('creates directory for file path', () => {
-            const filePath = join(testBaseDir, 'nested', 'dir', 'file.txt');
-            ArtifactManager.ensureDir(filePath);
-            expect(existsSync(join(testBaseDir, 'nested', 'dir'))).toBe(true);
-        });
-    });
 });
 
 describe('createArtifactManager', () => {
