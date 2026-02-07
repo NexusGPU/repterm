@@ -4,14 +4,14 @@
  * This is a recording test example marked with { record: true }
  * Only runs when using the --record parameter
  *
- * Run: bun src/cli/index.ts --record examples/08-recording-demos.ts
+ * Run: bun run repterm --record examples/08-recording-demos.ts
  *
  * Notes:
  * - Recording mode requires asciinema and tmux to be installed
  * - In recording mode exitCode is unreliable, use output assertions instead
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('Recording Demo', { record: true }, () => {
   test('Basic command demo', async ({ terminal }) => {

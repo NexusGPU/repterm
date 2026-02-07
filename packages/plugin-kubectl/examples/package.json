@@ -1,0 +1,18 @@
+{
+  "name": "@nexusgpu/repterm-plugin-kubectl-examples",
+  "private": true,
+  "type": "module",
+  "description": "Workspace package that simulates user-side TS tests using repterm + kubectl plugin",
+  "scripts": {
+    "check": "bunx tsc --noEmit -p tsconfig.json",
+    "run:simple": "bunx repterm 00-simple-demo.ts",
+    "run:basic": "bunx repterm 01-basic-kubectl.ts"
+  },
+  "devDependencies": {
+    "@nexusgpu/repterm-plugin-kubectl": "workspace:*",
+    "@types/bun": "latest",
+    "repterm": "workspace:*",
+    "repterm-api": "workspace:*",
+    "typescript": "^5.3.0"
+  }
+}

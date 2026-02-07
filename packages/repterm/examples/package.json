@@ -1,0 +1,14 @@
+{
+  "name": "@nexusgpu/repterm-examples",
+  "private": true,
+  "type": "module",
+  "description": "Workspace package that simulates user-side TS tests using repterm",
+  "scripts": {
+    "check": "bunx tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "repterm": "workspace:*",
+    "typescript": "^5.3.0"
+  }
+}

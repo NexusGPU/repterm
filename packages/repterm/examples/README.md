@@ -2,14 +2,16 @@
 
 This directory contains examples demonstrating how to use the Repterm framework efficiently.
 
+Plugin contributors: see [Plugin Contributor Guide](../../../CONTRIBUTING-PLUGINS.md).
+
 ## Usage
 
 ```bash
 # Run a specific example
-npx repterm examples/01-basic-commands.ts
+bunx repterm examples/01-basic-commands.ts
 
 # Run with recording enabled
-npx repterm --record examples/01-basic-commands.ts
+bunx repterm --record examples/01-basic-commands.ts
 ```
 
 ## Learning Path

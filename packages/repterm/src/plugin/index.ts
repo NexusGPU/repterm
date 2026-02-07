@@ -22,26 +22,22 @@ export type BasePluginContext = BasePluginContextGeneric<TestContext>;
 // ============== Type Helpers ==============
 
 type ExtractContextOut<T> = T extends PluginDefinition<string, object, infer Out, object> ? Out : {};
-type ExtractMethods<T> = T extends PluginDefinition<string, object, object, infer M> ? M : {};
-type ExtractName<T> = T extends PluginDefinition<infer N extends string, object, object, object>
-  ? N
-  : never;
+type ExtractMethods<T> = T extends PluginDefinition<string, any, any, infer M> ? M : {};
+type ExtractName<T> = T extends { name: infer N extends string } ? N : never;
 
-type MergePluginMethods<TPlugins extends readonly AnyPlugin[]> = TPlugins extends readonly [
-  infer First,
-  ...infer Rest
-]
-  ? Rest extends readonly AnyPlugin[]
-    ? { [K in ExtractName<First>]: ExtractMethods<First> } & MergePluginMethods<Rest>
-    : { [K in ExtractName<First>]: ExtractMethods<First> }
-  : {};
+type UnionToIntersection<T> =
+  (T extends unknown ? (arg: T) => void : never) extends (arg: infer U) => void ? U : never;
 
-type AccumulateContext<TPlugins extends readonly AnyPlugin[], TAccum extends object = {}> =
-  TPlugins extends readonly [infer First, ...infer Rest]
-    ? Rest extends readonly AnyPlugin[]
-      ? AccumulateContext<Rest, TAccum & ExtractContextOut<First>>
-      : TAccum & ExtractContextOut<First>
-    : TAccum;
+type MergePluginMethods<TPlugins extends readonly AnyPlugin[]> = {
+  [P in TPlugins[number] as ExtractName<P>]: ExtractMethods<P>;
+};
+
+type AccumulateContext<TPlugins extends readonly AnyPlugin[]> =
+  UnionToIntersection<ExtractContextOut<TPlugins[number]>> extends infer TContext
+    ? [TContext] extends [never]
+      ? {}
+      : TContext
+    : {};
 
 // ============== Augmented Test Context ==============
 

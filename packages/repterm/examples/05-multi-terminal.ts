@@ -1,10 +1,10 @@
 /**
  * 示例 5: 多终端测试
  * 
- * 运行方式: bun src/cli/index.ts examples/05-multi-terminal.ts
+ * 运行方式: bun run repterm examples/05-multi-terminal.ts
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('多终端测试', () => {
   test('创建第二个终端', async ({ terminal }) => {

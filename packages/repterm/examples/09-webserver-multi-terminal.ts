@@ -1,7 +1,7 @@
 /**
  * Example 9: Multi-window WebServer Test (Recording Mode)
  *
- * Run: bun src/cli/index.ts --record examples/09-webserver-multi-terminal.ts
+ * Run: bun run repterm --record examples/09-webserver-multi-terminal.ts
  *
  * Demo scenario:
  * 1. Start a web server in the default terminal (python -m http.server)
@@ -9,7 +9,7 @@
  * 3. Verify response is correct, close server
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('WebServer Multi-terminal Test', { record: true }, () => {
     test('Start server and access from another terminal', async ({ terminal }) => {

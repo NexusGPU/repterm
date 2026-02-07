@@ -12,6 +12,7 @@ import { runAllSuites } from '../runner/runner.js';
 import { createScheduler } from '../runner/scheduler.js';
 import { createReporter } from './reporter.js';
 import { checkDependencies, printDependencyCheck } from '../utils/dependencies.js';
+import { runPluginCommand } from './plugin.js';
 import type { RunResult } from '../runner/models.js';
 
 /**
@@ -19,8 +20,20 @@ import type { RunResult } from '../runner/models.js';
  */
 async function main(): Promise<void> {
   try {
+    const rawArgs = process.argv.slice(2);
+
+    if (rawArgs[0] === 'plugin') {
+      try {
+        const exitCode = await runPluginCommand(rawArgs.slice(1));
+        process.exit(exitCode);
+      } catch (error) {
+        console.error('Plugin error:', (error as Error).message);
+        process.exit(1);
+      }
+    }
+
     const args = parseArgs({
-      args: process.argv.slice(2),
+      args: rawArgs,
       options: {
         record: {
           type: 'boolean',
@@ -198,6 +211,7 @@ Repterm - CLI/TUI Test Framework
 
 Usage:
   repterm [options] <test-paths...>
+  repterm plugin <command> [options]
 
 Options:
   -r, --record         Run recording tests (tests marked with { record: true })
@@ -208,6 +222,13 @@ Options:
   --slow-threshold <ms> Show duration for tests slower than this (default: 50)
   --recording-dir <path>   Directory for recording artifacts (default: /tmp/repterm)
   -h, --help           Show this help message
+
+Plugin Commands:
+  repterm plugin search [query]
+  repterm plugin list
+  repterm plugin install <pkg...>
+  repterm plugin uninstall <pkg...>
+  repterm plugin update [pkg...]
 
 Test Modes:
   Without --record:    Runs tests NOT marked with { record: true }

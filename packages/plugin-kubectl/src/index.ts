@@ -1,3 +1,4 @@
+/// <reference path="./matchers.d.ts" />
 /**
  * Kubectl Plugin for Repterm
  *

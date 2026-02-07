@@ -1,110 +1,66 @@
-# Repterm - CLI/TUI Test Framework
+# Repterm
 
-A TypeScript-based test framework for terminal and CLI applications, featuring a modern, declarative API, terminal recording capabilities, and parallel test execution.
+Repterm is a terminal-first test framework for CLI/TUI applications.
+It runs tests in a real PTY so you can assert on interactive terminal behavior, not just plain stdout.
 
----
+## Packages
 
-## Core Value
+- `repterm`: runner + CLI
+- `repterm-api`: plugin/matcher API for extension authors
+- `@nexusgpu/repterm-plugin-kubectl`: kubectl-focused plugin
 
-Why choose Repterm?
+Plugin contributors: see [Plugin Contributor Guide](CONTRIBUTING-PLUGINS.md).
 
-- **Visual Verification**: Unlike traditional CLI tests that only capture stdout, Repterm runs in a real PTY, capturing colors, cursor movements, and full terminal state.
-
-- **Record & Replay**: Every test run can be recorded as an asciinema cast. Debugging CI failures becomes as easy as watching a video.
-
-- **Zero Config TypeScript**: Write tests in `.ts` files immediately. No complex `tsconfig` or compilation steps required.
-
-## Features
-
-- **Modern, Declarative API**: Familiar `test()`, `expect()`, and `describe()` syntax.
-
-- **Parallel Execution**: Run tests concurrently in isolated workers for maximum speed.
-
-- **Multi-terminal Support**: Test complex scenarios involving multiple interacting terminal sessions.
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20.11.0+
-- `asciinema` (Optional, for recording)
-- `tmux` (Optional, for multi-terminal)
+## Install
 
 ```bash
-# macOS
-brew install asciinema tmux
-
-# Ubuntu/Debian
-apt-get install asciinema tmux
+bun add -d repterm
 ```
 
-### Installation
+Run tests:
 
 ```bash
-npm install repterm --save-dev
+bunx repterm tests/
+bunx repterm --workers 4 tests/
+bunx repterm --record tests/
 ```
 
-### Writing Your First Test
+## Install Binary (from R2/CDN)
 
-Create a file `tests/hello.test.ts`:
+The release workflow uploads standalone binaries to Cloudflare R2 using this layout:
 
-```typescript
-import { test, expect } from 'repterm';
+- `.../archive/repterm/latest/repterm-<os>-<arch>`
+- `.../archive/repterm/v<version>/repterm-<os>-<arch>`
 
-test('echo command', async ({ terminal }) => {
-  // Execute a command in the PTY
-  await terminal.run('echo "Hello, Repterm!"');
-
-  // Verify output
-  await terminal.waitForText('Hello, Repterm!');
-
-  // Assertions
-  await expect(terminal).toContainText('Hello, Repterm!');
-});
-```
-
-### Running Tests
+### Linux/macOS
 
 ```bash
-# Run all tests
-npx repterm tests/
-
-# Run with recording
-npx repterm --record tests/
-
-# Run in parallel
-npx repterm --workers 4 tests/
+curl -fsSL https://cdn.tensor-fusion.ai/archive/repterm/install.sh | sh
 ```
 
-## Architecture
+Install a specific version and custom source:
 
-How Repterm works:
-
-```mermaid
-graph LR
-    Runner[Test Runner] -->|Spawns| Worker[Worker Process]
-    Worker -->|Creates| PTY[Pseudo-Terminal]
-    PTY -->|Executes| App[User CLI App]
-
-    subgraph Context [Test Context]
-    TerminalAPI --> PTY
-    end
+```bash
+curl -fsSL https://cdn.tensor-fusion.ai/archive/repterm/install.sh \
+  | REPTERM_VERSION=v0.2.0 REPTERM_BASE_URL=https://cdn.tensor-fusion.ai/archive/repterm sh
 ```
 
-1. **Runner**: Discovers tests and manages worker processes.
-2. **Worker**: An isolated environment for each test file.
-3. **PTY**: Simulates a real terminal, handling ANSI codes and interactivity.
+Optional environment variables for `scripts/install.sh`:
 
-## Documentation
+- `REPTERM_VERSION`: default `latest`
+- `REPTERM_BASE_URL`: default `https://cdn.tensor-fusion.ai/archive/repterm`
+- `REPTERM_INSTALL_DIR`: default `/usr/local/bin`
 
-- [Quickstart Guide](specs/001-tui-test-framework/quickstart.md)
-- [TypeScript Support](TYPESCRIPT-SUPPORT.md)
-- [Recording Implementation](RECORDING-IMPLEMENTATION.md)
+### Windows (PowerShell)
+
+```powershell
+$env:REPTERM_VERSION = "latest"
+$env:REPTERM_BASE_URL = "https://cdn.tensor-fusion.ai/archive/repterm"
+iwr https://cdn.tensor-fusion.ai/archive/repterm/install.ps1 -UseBasicParsing | iex
+```
 
 ## Examples
 
-Check out the [examples directory](packages/repterm/examples/README.md) for more usage scenarios.
+- Repterm examples: `packages/repterm/examples/README.md`
+- Kubectl plugin examples: `packages/plugin-kubectl/examples/README.md`
 
-## License
-
-MIT

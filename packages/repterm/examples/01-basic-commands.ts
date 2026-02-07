@@ -1,10 +1,10 @@
 /**
  * 示例 1: 基础命令执行
  * 
- * 运行方式: bun src/cli/index.ts examples/01-basic-commands.ts
+ * 运行方式: bun run repterm examples/01-basic-commands.ts
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('基础命令执行', () => {
   test('执行 echo 命令', async ({ terminal }) => {

@@ -4,7 +4,6 @@ globs: *.tsx,*.ts
 alwaysApply: false
 ---
 
-- Enable strict mode in your `tsconfig.json` for better type checking.
 - Use interfaces for object shapes and types for unions or intersections.
 - Leverage type inference where possible to reduce type annotations.
 - Use generics for reusable components and functions.
@@ -14,3 +13,4 @@ alwaysApply: false
 - Use `pnpm` as default package manager if run Command in Terminal.
 - Always run `pnpm lint` and fix issues before competion
 - Avoid use 'as' keyword if possible, think how to simplify typing with type operations or reference, eg. API data schema, frontend data models
+- NEVER write low value test cases, hit key path and try cover more codes and cases with less code

@@ -33,7 +33,6 @@ describe('Scenario 4: Resource release verification', { record: true }, () => {
     test('Step 1: Record initial GPU resource state', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        kubectl.get()
 
         await step('Acquire test GPU', async () => {
             gpuName = await getFirstGpuName(kubectl);

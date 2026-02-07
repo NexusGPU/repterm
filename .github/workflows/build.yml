@@ -1,0 +1,273 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_repterm:
+        description: "Release repterm (npm + binaries)"
+        required: true
+        type: boolean
+        default: true
+      release_plugins:
+        description: "Release plugins (@nexusgpu/repterm-plugin-kubectl)"
+        required: true
+        type: boolean
+        default: false
+      release_repterm_api:
+        description: "Release repterm-api"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  R2_BUCKET: 'cuda-fusion-libs'
+
+jobs:
+  compile:
+    name: Compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build all packages
+        run: bun run build
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun run test
+
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    needs: [compile, lint, test]
+    if: github.event_name == 'workflow_dispatch' && inputs.release_repterm == true
+    outputs:
+      published: ${{ steps.semantic.outputs.new_release_published }}
+      version: ${{ steps.semantic.outputs.new_release_version }}
+      tag: ${{ steps.semantic.outputs.new_release_git_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build repterm package
+        run: bun run build:repterm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/release-notes-generator
+            @semantic-release/github
+            @semantic-release/npm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-repterm:
+    name: Release repterm (npm + binary)
+    runs-on: ubuntu-latest
+    needs: semantic-release
+    if: needs.semantic-release.outputs.published == 'true' && github.event_name == 'workflow_dispatch' && inputs.release_repterm == true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build repterm binaries
+        run: bun run build:binary
+
+      - name: Generate checksums
+        run: cd packages/repterm/release && for f in repterm-*; do sha256sum "$f" > "$f.sha256"; done
+
+      - name: Upload binary artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.semantic-release.outputs.tag }}
+          files: packages/repterm/release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare R2 binary assets
+        run: |
+          mkdir -p cdn-binaries
+          cp packages/repterm/release/repterm-linux-x64 cdn-binaries/repterm-linux-x64
+          cp packages/repterm/release/repterm-linux-arm64 cdn-binaries/repterm-linux-arm64
+          cp packages/repterm/release/repterm-darwin-x64 cdn-binaries/repterm-darwin-x64
+          cp packages/repterm/release/repterm-darwin-arm64 cdn-binaries/repterm-darwin-arm64
+          cp packages/repterm/release/repterm-windows-x64.exe cdn-binaries/repterm-windows-x64.exe
+          cd cdn-binaries && for f in repterm-*; do sha256sum "$f" > "$f.sha256"; done
+
+      - name: Prepare R2 install scripts
+        run: |
+          mkdir -p cdn-scripts
+          cp scripts/install.sh scripts/install.ps1 scripts/install.bat cdn-scripts/
+
+      - name: Upload binaries to R2 (latest)
+        uses: ryand56/r2-upload-action@latest
+        with:
+          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
+          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          r2-bucket: ${{ env.R2_BUCKET }}
+          source-dir: cdn-binaries
+          destination-dir: ./archive/repterm/latest/
+          keep-file-fresh: true
+
+      - name: Upload binaries to R2 (versioned)
+        uses: ryand56/r2-upload-action@latest
+        with:
+          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
+          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          r2-bucket: ${{ env.R2_BUCKET }}
+          source-dir: cdn-binaries
+          destination-dir: ./archive/repterm/v${{ needs.semantic-release.outputs.version }}/
+
+      - name: Upload install scripts to R2
+        uses: ryand56/r2-upload-action@latest
+        with:
+          r2-account-id: ${{ secrets.R2_ACCOUNT_ID }}
+          r2-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          r2-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          r2-bucket: ${{ env.R2_BUCKET }}
+          source-dir: cdn-scripts
+          destination-dir: ./archive/repterm/
+          keep-file-fresh: true
+
+  release-plugins:
+    name: Release plugins
+    runs-on: ubuntu-latest
+    needs: [compile, lint, test]
+    if: github.event_name == 'workflow_dispatch' && inputs.release_plugins == true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure npm auth
+        run: |
+          cat > ~/.npmrc <<'NPMRC'
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          NPMRC
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build plugin package
+        run: bun run build:plugin-kubectl
+
+      - name: Publish plugin package
+        run: bun run publish:plugin-kubectl
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-repterm-api:
+    name: Release repterm-api
+    runs-on: ubuntu-latest
+    needs: [compile, lint, test]
+    if: github.event_name == 'workflow_dispatch' && inputs.release_repterm_api == true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure npm auth
+        run: |
+          cat > ~/.npmrc <<'NPMRC'
+          //registry.npmjs.org/:_authToken=${NPM_TOKEN}
+          NPMRC
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build repterm-api package
+        run: bun run build:plugin-api
+
+      - name: Publish repterm-api package
+        run: bun run publish:plugin-api
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

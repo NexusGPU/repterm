@@ -1,10 +1,10 @@
 /**
  * Example 2: CommandResult assertions
  *
- * Run: bun src/cli/index.ts examples/02-command-assertions.ts
+ * Run: bun run repterm examples/02-command-assertions.ts
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('Chained assertions', () => {
   test('multiple assertions can be chained', async ({ terminal }) => {

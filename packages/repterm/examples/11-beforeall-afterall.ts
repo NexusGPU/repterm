@@ -8,7 +8,7 @@
  * Context from beforeAll is passed to all tests and nested describes.
  */
 
-import { describe, beforeAll, afterAll, test, type TestContext } from '../src/index.js';
+import { describe, beforeAll, afterAll, test, type TestContext } from 'repterm';
 
 interface DbConnection {
   host: string;

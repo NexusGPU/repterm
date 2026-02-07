@@ -14,8 +14,8 @@ import {
     describe,
     defineConfig,
     createTestWithPlugins,
-} from '../../repterm/src/index.js';
-import { kubectlPlugin } from '../src/index.js';
+} from 'repterm';
+import { kubectlPlugin } from '@nexusgpu/repterm-plugin-kubectl';
 
 // Configure plugin
 const config = defineConfig({

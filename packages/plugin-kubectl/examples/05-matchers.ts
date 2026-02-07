@@ -18,7 +18,7 @@ import {
     createTestWithPlugins,
     expect,
 } from 'repterm';
-import { kubectlPlugin, pod, deployment, registerK8sMatchers } from '../src/index.js';
+import { kubectlPlugin, pod, deployment, registerK8sMatchers } from '@nexusgpu/repterm-plugin-kubectl';
 
 // Register K8s matchers
 registerK8sMatchers();

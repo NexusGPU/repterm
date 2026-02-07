@@ -1,12 +1,14 @@
 ## Quickstart
 
+Plugin contributors: see [Plugin Contributor Guide](../../CONTRIBUTING-PLUGINS.md).
+
 ### Prerequisites
-- Node.js 20.11.0
+- Bun 1.3+
 - `asciinema` and `tmux` installed for recording mode
 
 ### Install (local development)
 ```bash
-npm install
+bun install
 ```
 
 ### Example: Run a single terminal test
@@ -151,30 +153,30 @@ test('should use temp directory', async ({ terminal }) => {
 
 ### Run tests (non-recorded)
 ```bash
-repterm tests/example.test.ts
+bunx repterm tests/example.test.ts
 ```
 
 ### Run tests with recording enabled
 ```bash
-repterm --record tests/example.test.ts
+bunx repterm --record tests/example.test.ts
 ```
 
 ### Run tests in parallel with 4 workers
 ```bash
-repterm --workers 4 tests/
+bunx repterm --workers 4 tests/
 ```
 
 ### Run tests with custom timeout
 ```bash
-repterm --timeout 60000 tests/
+bunx repterm --timeout 60000 tests/
 ```
 
 ### Run tests with verbose output
 ```bash
-repterm --verbose tests/
+bunx repterm --verbose tests/
 ```
 
 ### Show help
 ```bash
-repterm --help
+bunx repterm --help
 ```

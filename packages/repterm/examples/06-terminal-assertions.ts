@@ -1,10 +1,10 @@
 /**
  * 示例 6: Terminal 断言
  * 
- * 运行方式: bun src/cli/index.ts examples/06-terminal-assertions.ts
+ * 运行方式: bun run repterm examples/06-terminal-assertions.ts
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('Terminal 断言', () => {
   test('检查终端包含特定文本', async ({ terminal }) => {

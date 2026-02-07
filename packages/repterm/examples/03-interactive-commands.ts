@@ -1,13 +1,13 @@
 /**
  * Example 3: Interactive commands
  *
- * Run: bun src/cli/index.ts examples/03-interactive-commands.ts
+ * Run: bun run repterm examples/03-interactive-commands.ts
  *
  * Interactive commands require { interactive: true }. In interactive mode
  * exitCode is unreliable; use output assertions instead.
  */
 
-import { test, expect, describe } from '../src/index.js';
+import { test, expect, describe } from 'repterm';
 
 describe('Interactive commands', () => {
   test('run interactive command with interactive option', async ({ terminal }) => {

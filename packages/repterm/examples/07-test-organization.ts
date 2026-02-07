@@ -1,10 +1,10 @@
 /**
  * 示例 7: 测试组织结构
  * 
- * 运行方式: bun src/cli/index.ts examples/07-test-organization.ts
+ * 运行方式: bun run repterm examples/07-test-organization.ts
  */
 
-import { test, describe, step, expect } from '../src/index.js';
+import { test, describe, step, expect } from 'repterm';
 
 describe('用户管理功能', () => {
   describe('用户注册', () => {

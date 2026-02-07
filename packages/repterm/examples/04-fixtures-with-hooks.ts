@@ -1,12 +1,12 @@
 /**
  * Example 4: Using Hooks for Fixtures (Lazy Loading)
  *
- * Run: bun src/cli/index.ts examples/04-fixtures-with-hooks.ts
+ * Run: bun run repterm examples/04-fixtures-with-hooks.ts
  *
  * Note: Run this example independently, don't run with other examples, since hooks are globally shared
  */
 
-import { test, expect, describe, beforeEach, afterEach } from '../src/index.js';
+import { test, expect, describe, beforeEach, afterEach } from 'repterm';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -48,3 +48,5 @@ describe('Temporary Directory Fixture', () => {
     const readResult = await terminal.run(`cat ${tmpDir}/hello.txt`);
     expect(readResult).toSucceed();
     expect(readResult).toHaveStdout('Hello World');
+  });
+});

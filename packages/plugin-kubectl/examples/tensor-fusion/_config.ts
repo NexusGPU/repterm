@@ -28,7 +28,7 @@ import {
   deployment,
   resource,
   type KubectlMethods,
-} from '../../src/index.js';
+} from '@nexusgpu/repterm-plugin-kubectl';
 
 // ===== Configuration Constants =====
 

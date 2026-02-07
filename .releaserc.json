@@ -3,22 +3,11 @@
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
-    [
-      "@semantic-release/github",
-      {
-        "assets": [
-          { "path": "packages/repterm/release/repterm-linux-x64", "label": "repterm-linux-x64" },
-          { "path": "packages/repterm/release/repterm-linux-arm64", "label": "repterm-linux-arm64" },
-          { "path": "packages/repterm/release/repterm-darwin-x64", "label": "repterm-darwin-x64" },
-          { "path": "packages/repterm/release/repterm-darwin-arm64", "label": "repterm-darwin-arm64" },
-          { "path": "packages/repterm/release/repterm-windows-x64.exe", "label": "repterm-windows-x64.exe" }
-        ]
-      }
-    ],
+    "@semantic-release/github",
     [
       "@semantic-release/npm",
       {
-        "npmPublish": false,
+        "npmPublish": true,
         "pkgRoot": "packages/repterm"
       }
     ]

@@ -2,7 +2,9 @@
   "private": true,
   "name": "repterm-monorepo",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/repterm/examples",
+    "packages/plugin-kubectl/examples"
   ],
   "scripts": {
     "build": "bun run --filter '*' build",

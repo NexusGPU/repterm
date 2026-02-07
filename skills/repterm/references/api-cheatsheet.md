@@ -3,6 +3,25 @@
 > Verify: `bun test packages/repterm/tests/unit`
 > Run example: `bun run repterm packages/repterm/examples/<file>.ts`
 
+## Plugin manager CLI
+
+```bash
+# Search plugins from current npm registry (Bun-only package management)
+repterm plugin search kubernetes
+
+# List installed repterm plugins in current project
+repterm plugin list
+
+# Install / remove / update plugins (uses bun add/remove/update)
+repterm plugin install @nexusgpu/repterm-plugin-kubectl
+repterm plugin uninstall @nexusgpu/repterm-plugin-kubectl
+repterm plugin update
+```
+
+Notes:
+- Registry resolution order: `NPM_CONFIG_REGISTRY` -> project `.npmrc` -> user `.npmrc` -> npmjs.
+- `install` and `update` verify plugin importability after Bun completes.
+
 ## Test DSL
 
 ```ts
