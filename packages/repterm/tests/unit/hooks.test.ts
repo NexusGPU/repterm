@@ -10,6 +10,7 @@ import type { TestContext, TestSuite } from '../../src/runner/models.js';
 
 describe('HooksRegistry', () => {
     beforeEach(() => {
+        clearTests();
         hooksRegistry.clear();
     });
 

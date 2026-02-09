@@ -270,3 +270,78 @@ describe('getDetectedPromptPattern', () => {
         expect(terminal.getDetectedPromptPattern()).toBeUndefined();
     });
 });
+
+describe('waitForText event-driven (non-recording)', () => {
+    let terminal: Terminal | null = null;
+
+    afterEach(async () => {
+        if (terminal) {
+            await terminal.close();
+            terminal = null;
+        }
+    });
+
+    test('resolves immediately if text already in buffer', async () => {
+        terminal = new Terminal();
+        terminal.appendNonInteractiveOutput('expected text here');
+
+        const start = Date.now();
+        await terminal.waitForText('expected text', { timeout: 5000 });
+        const elapsed = Date.now() - start;
+
+        // Should resolve near-instantly, not wait for any polling interval
+        expect(elapsed).toBeLessThan(50);
+    });
+
+    test('resolves when appendNonInteractiveOutput adds matching text', async () => {
+        terminal = new Terminal();
+
+        setTimeout(() => {
+            terminal!.appendNonInteractiveOutput('delayed output');
+        }, 50);
+
+        await terminal.waitForText('delayed output', { timeout: 2000 });
+    });
+
+    test('throws on timeout with correct error message', async () => {
+        terminal = new Terminal();
+
+        try {
+            await terminal.waitForText('never appears', { timeout: 200 });
+            throw new Error('Should have thrown');
+        } catch (e: any) {
+            expect(e.message).toBe('Timeout waiting for text "never appears" after 200ms');
+        }
+    });
+
+    test('handles text split across multiple appendNonInteractiveOutput calls', async () => {
+        terminal = new Terminal();
+
+        setTimeout(() => {
+            terminal!.appendNonInteractiveOutput('hel');
+        }, 30);
+        setTimeout(() => {
+            terminal!.appendNonInteractiveOutput('lo world');
+        }, 60);
+
+        await terminal.waitForText('hello', { timeout: 2000 });
+    });
+});
+
+describe('waitForOutputStable event-driven (non-recording)', () => {
+    let terminal: Terminal | null = null;
+
+    afterEach(async () => {
+        if (terminal) {
+            await terminal.close();
+            terminal = null;
+        }
+    });
+
+    test('does not throw on timeout', async () => {
+        terminal = new Terminal();
+
+        // Should resolve silently even if no prompt appears
+        await terminal.waitForOutputStablePublic(100);
+    });
+});

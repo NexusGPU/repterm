@@ -336,26 +336,26 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     const shouldStripAnsi = options.stripAnsi ?? true;  // Default to true
     const startTime = Date.now();
 
-    while (Date.now() - startTime < timeout) {
-      let output: string;
-
-      if (this.recording && this.paneIndex !== undefined && this.tmuxSessionName) {
-        // Recording mode: capture current pane's output via tmux
+    if (this.recording && this.paneIndex !== undefined && this.tmuxSessionName) {
+      // Recording mode: keep polling (tmux has no push mechanism for pane content)
+      while (Date.now() - startTime < timeout) {
         const rawOutput = await this.capturePaneOutput();
-        // Strip ANSI sequences if enabled (default)
-        output = shouldStripAnsi ? this.stripAnsi(rawOutput) : rawOutput;
-      } else {
-        // Non-recording mode: use session buffer
-        output = this.getAllOutput();
+        const output = shouldStripAnsi ? this.stripAnsi(rawOutput) : rawOutput;
+        if (output.includes(text)) {
+          return;
+        }
+        await this.sleep(100);
       }
-
-      if (output.includes(text)) {
-        return;
-      }
-      await this.sleep(100);
+      throw new Error(`Timeout waiting for text "${text}" after ${timeout}ms`);
+    } else {
+      // Non-recording mode: event-driven via session 'data' + terminal '_outputChanged'
+      return this.waitForSessionCondition(
+        () => this.getAllOutput().includes(text),
+        timeout - (Date.now() - startTime),
+        `Timeout waiting for text "${text}" after ${timeout}ms`,
+        true,
+      );
     }
-
-    throw new Error(`Timeout waiting for text "${text}" after ${timeout}ms`);
   }
 
   /**
@@ -441,6 +441,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   appendNonInteractiveOutput(output: string): void {
     this.nonInteractiveOutput += output;
+    this.emit('_outputChanged');
   }
 
   /**
@@ -843,20 +844,32 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     const startTime = Date.now();
     // Detect prompt (right-side layout); use detected or default pattern
     const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*/;
-    const checkInterval = 100;
 
-    while (Date.now() - startTime < timeout) {
-      await this.sleep(checkInterval);
-
-      const output = this.recording
-        ? await this.capturePaneOutput()
-        : this.session.getOutput();
-
-      const stripped = this.stripAnsi(output);
-      const lastLine = stripped.trim().split('\n').pop() || '';
-      if (promptPattern.test(lastLine)) {
-        return;
+    if (this.recording) {
+      // Recording mode: keep polling (tmux has no push mechanism)
+      const checkInterval = 100;
+      while (Date.now() - startTime < timeout) {
+        await this.sleep(checkInterval);
+        const output = await this.capturePaneOutput();
+        const stripped = this.stripAnsi(output);
+        const lastLine = stripped.trim().split('\n').pop() || '';
+        if (promptPattern.test(lastLine)) {
+          return;
+        }
       }
+    } else {
+      // Non-recording mode: event-driven via session 'data'
+      return this.waitForSessionCondition(
+        () => {
+          const output = this.session.getOutput();
+          const stripped = this.stripAnsi(output);
+          const lastLine = stripped.trim().split('\n').pop() || '';
+          return promptPattern.test(lastLine);
+        },
+        timeout - (Date.now() - startTime),
+        undefined,  // no throw on timeout (matches original behavior)
+        false,      // no _outputChanged needed (prompt detection is PTY-only)
+      );
     }
   }
 
@@ -865,6 +878,62 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Event-driven condition wait for non-recording mode.
+   * Listens to session 'data' and optionally terminal '_outputChanged'.
+   */
+  private waitForSessionCondition(
+    checkFn: () => boolean,
+    timeout: number,
+    errorMessage?: string,
+    listenOutputChanged: boolean = false,
+  ): Promise<void> {
+    // Synchronous immediate check — handles "text already in buffer"
+    if (checkFn()) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const cleanup = () => {
+        this.session.removeListener('data', onData);
+        if (listenOutputChanged) {
+          this.removeListener('_outputChanged', onOutputChanged);
+        }
+        clearTimeout(timer);
+      };
+
+      const check = () => {
+        if (settled) return;
+        if (checkFn()) {
+          settled = true;
+          cleanup();
+          resolve();
+        }
+      };
+
+      const onData = () => check();
+      const onOutputChanged = () => check();
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (errorMessage) {
+          reject(new Error(errorMessage));
+        } else {
+          resolve();
+        }
+      }, timeout);
+
+      this.session.on('data', onData);
+      if (listenOutputChanged) {
+        this.on('_outputChanged', onOutputChanged);
+      }
+    });
   }
 
   /**
