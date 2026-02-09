@@ -262,6 +262,118 @@ describe('analyzePromptLine', () => {
         expect(pattern).toBeDefined();
         expect(pattern.test('root@server:/# ')).toBe(true);
     });
+
+    // --- lastIndexOf behavior (core bug fix) ---
+
+    test('picks last prompt char when multiple appear in single-line PTY output', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // Simulates stripped PTY output: p10k instant prompt '%' appears early,
+        // then real prompt '❯' appears later in the concatenated single line
+        const singleLine = '7  ~/path ❯                    at 15:49:188]7;file://host%                    ~/path on main ❯ at 15:49:18';
+        const pattern = analyze(singleLine);
+        expect(pattern).toBeDefined();
+        // Should detect the LAST ❯, not the earlier %
+        expect(pattern.test('❯ at 15:49:18')).toBe(true);
+        expect(pattern.source).toContain('❯');
+    });
+
+    test('prefers final ❯ over earlier % in p10k instant prompt scenario', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // p10k instant prompt '%' at start, real prompt '❯' at end
+        const line = '%                                  ~/project ❯ at 18:00:00';
+        const pattern = analyze(line);
+        expect(pattern).toBeDefined();
+        expect(pattern.source).toContain('❯');
+        expect(pattern.test('~/project ❯ at 18:00:00')).toBe(true);
+    });
+
+    test('picks last $ when multiple $ appear across lines', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // Multi-line: analyzePromptLine uses the LAST line
+        const input = '$HOME is /home/user\nuser@host:~$ ';
+        const pattern = analyze(input);
+        expect(pattern).toBeDefined();
+        expect(pattern.test('user@host:~$ ')).toBe(true);
+    });
+
+    // --- \s+ regex (single space must match) ---
+
+    test('right-side pattern matches single space after prompt char', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // Only 1 space between ❯ and right-side content
+        const line = '  ~/project on main ❯ at 18:00:00';
+        const pattern = analyze(line);
+        expect(pattern).toBeDefined();
+        expect(pattern.test('❯ at 18:00:00')).toBe(true);
+    });
+
+    test('right-side pattern matches many spaces after prompt char', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // Many spaces between ❯ and right-side content
+        const line = '  ~/path ❯                    at 18:00:00';
+        const pattern = analyze(line);
+        expect(pattern).toBeDefined();
+        expect(pattern.test('❯                    at 18:00:00')).toBe(true);
+    });
+
+    // --- More prompt styles ---
+
+    test('detects fish shell > prompt', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        const pattern = analyze('user@host ~/project> ');
+        expect(pattern).toBeDefined();
+        expect(pattern.test('~/project> ')).toBe(true);
+    });
+
+    test('detects lambda prompt', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        const pattern = analyze('λ ');
+        expect(pattern).toBeDefined();
+        expect(pattern.test('λ ')).toBe(true);
+    });
+
+    test('detects arrow prompt (→)', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        const pattern = analyze('~/project → ');
+        expect(pattern).toBeDefined();
+        expect(pattern.test('→ ')).toBe(true);
+    });
+
+    test('detects prompt char at line end without trailing space', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        // No trailing space — should use (\s|$) branch
+        const pattern = analyze('user@host:~$');
+        expect(pattern).toBeDefined();
+        // Should match at end of string
+        expect(pattern.test('user@host:~$')).toBe(true);
+        // Should also match with trailing space
+        expect(pattern.test('user@host:~$ ')).toBe(true);
+    });
+
+    test('returns undefined for whitespace-only lines', () => {
+        const terminal = new Terminal();
+        const analyze = (terminal as any).analyzePromptLine.bind(terminal);
+
+        expect(analyze('   \n   ')).toBeUndefined();
+    });
 });
 
 describe('getDetectedPromptPattern', () => {
@@ -343,5 +455,145 @@ describe('waitForOutputStable event-driven (non-recording)', () => {
 
         // Should resolve silently even if no prompt appears
         await terminal.waitForOutputStablePublic(100);
+    });
+
+    // --- afterOffset behavior ---
+
+    test('afterOffset prevents matching old prompt in buffer', async () => {
+        terminal = new Terminal();
+        // Set a detected prompt pattern
+        (terminal as any).detectedPromptPattern = /\$(\s|$)/;
+
+        // Simulate existing output with prompt
+        const session = terminal.getSession();
+        (session as any).outputBuffer = 'user@host:~$ ';
+        const offset = (session as any).outputBuffer.length;
+
+        // With afterOffset, the old prompt should NOT match
+        const start = Date.now();
+        await terminal.waitForOutputStablePublic(300, offset);
+        const elapsed = Date.now() - start;
+
+        // Should have waited close to the full timeout (not resolved instantly)
+        expect(elapsed).toBeGreaterThanOrEqual(250);
+    });
+
+    test('afterOffset allows matching new prompt after offset', async () => {
+        terminal = new Terminal();
+        (terminal as any).detectedPromptPattern = /\$(\s|$)/;
+
+        const session = terminal.getSession();
+        (session as any).outputBuffer = 'user@host:~$ ';
+        const offset = (session as any).outputBuffer.length;
+
+        // Verify the session is the same object used internally
+        expect(session).toBe((terminal as any).session);
+
+        // Simulate new output arriving after 100ms (with prompt)
+        setTimeout(() => {
+            (session as any).outputBuffer += 'command output\nuser@host:~$ ';
+            session.emit('data', 'new data');
+        }, 100);
+
+        const start = Date.now();
+        await terminal.waitForOutputStablePublic(5000, offset);
+        const elapsed = Date.now() - start;
+
+        // Should resolve after new data arrives, not wait full timeout
+        expect(elapsed).toBeLessThan(2000);
+    });
+});
+
+describe('prompt detection on shell ready', () => {
+    let terminal: Terminal | null = null;
+
+    afterEach(async () => {
+        if (terminal) {
+            await terminal.close();
+            terminal = null;
+        }
+    });
+
+    test('detectPromptFromOutput sets pattern from session output', () => {
+        terminal = new Terminal();
+        const session = terminal.getSession();
+        (session as any).outputBuffer = 'user@host:~$ ';
+
+        (terminal as any).detectPromptFromOutput();
+
+        const pattern = terminal.getDetectedPromptPattern();
+        expect(pattern).toBeDefined();
+        expect(pattern!.test('user@host:~$ ')).toBe(true);
+    });
+
+    test('detectPromptFromOutput does not overwrite existing pattern', () => {
+        terminal = new Terminal();
+        const existingPattern = /custom-pattern/;
+        (terminal as any).detectedPromptPattern = existingPattern;
+
+        const session = terminal.getSession();
+        (session as any).outputBuffer = 'user@host:~$ ';
+
+        (terminal as any).detectPromptFromOutput();
+
+        expect(terminal.getDetectedPromptPattern()).toBe(existingPattern);
+    });
+
+    test('detectPromptFromOutput handles empty output gracefully', () => {
+        terminal = new Terminal();
+        (terminal as any).detectPromptFromOutput();
+
+        expect(terminal.getDetectedPromptPattern()).toBeUndefined();
+    });
+
+    test('detectPromptFromOutput strips ANSI before analysis', () => {
+        terminal = new Terminal();
+        const session = terminal.getSession();
+        (session as any).outputBuffer = '\x1b[32muser@host\x1b[0m:\x1b[34m~\x1b[0m$ ';
+
+        (terminal as any).detectPromptFromOutput();
+
+        const pattern = terminal.getDetectedPromptPattern();
+        expect(pattern).toBeDefined();
+        expect(pattern!.test('user@host:~$ ')).toBe(true);
+    });
+
+    // --- ANSI/OSC edge cases ---
+
+    test('detectPromptFromOutput strips CSI with parameter prefixes (> not misdetected)', () => {
+        terminal = new Terminal();
+        const session = terminal.getSession();
+        // CSI >0q and CSI ?1049h contain '>' and '?' which are NOT prompt chars
+        (session as any).outputBuffer = '\x1b[>0q\x1b[?1049h user@host:~$ ';
+
+        (terminal as any).detectPromptFromOutput();
+
+        const pattern = terminal.getDetectedPromptPattern();
+        expect(pattern).toBeDefined();
+        // Should detect '$', not '>' from the CSI sequence
+        expect(pattern!.source).toContain('\\$');
+    });
+
+    test('detectPromptFromOutput handles OSC 7 sequences in p10k output', () => {
+        terminal = new Terminal();
+        const session = terminal.getSession();
+        // OSC 7 (file URI) followed by p10k prompt with ❯
+        (session as any).outputBuffer = '\x1b]7;file://hostname/Users/user/project\x07  ~/project ❯   at 18:00';
+
+        (terminal as any).detectPromptFromOutput();
+
+        const pattern = terminal.getDetectedPromptPattern();
+        expect(pattern).toBeDefined();
+        expect(pattern!.source).toContain('❯');
+    });
+
+    test('detectPromptFromOutput returns undefined for ANSI-only output without prompt', () => {
+        terminal = new Terminal();
+        const session = terminal.getSession();
+        (session as any).outputBuffer = '\x1b[32msome text\x1b[0m';
+
+        (terminal as any).detectPromptFromOutput();
+
+        expect(terminal.getDetectedPromptPattern()).toBeUndefined();
     });
 });

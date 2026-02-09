@@ -12,6 +12,24 @@ import { EventEmitter } from 'events';
 import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
 
 /**
+ * Strip ANSI escape sequences from text
+ */
+function stripAnsi(text: string): string {
+  // CSI sequences: ESC [ (optional ?/>/=) (params) (letter)
+  // OSC sequences: ESC ] ... BEL
+  // Charset: ESC ( or ) followed by charset designator
+  // Simple two-byte: ESC = or ESC >
+  const ansiRegex = /\x1b\[[?>=]*[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]/g;
+  return text.replace(ansiRegex, '');
+}
+
+/** Prompt-ending characters for shell-ready detection */
+const SHELL_READY_CHARS = ['$', '#', '%', '>', '❯', '→', 'λ', '»', '❮', '›', '⟩'];
+
+/** Fallback prompt pattern (all prompt chars from analyzePromptLine) */
+const FALLBACK_PROMPT_PATTERN = /[\$#%>❯→λ»❮›⟩]\s*/;
+
+/**
  * Compute tmux output capture line range. Pure function for unit testing.
  */
 export function calculateOutputRange(
@@ -101,6 +119,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private beforeEnterCursorY: number = 0;
   // Command line count from command content (most reliable)
   private commandLineCount: number = 0;
+  // Output offset recorded just before writing command (for ptyOnly prompt detection)
+  private commandOutputOffset: number = 0;
   // Detected or configured prompt line count (default 0)
   private promptLineCount: number = 0;
   // Use user-configured value (skip auto-detect)
@@ -273,31 +293,48 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    * Wait for shell to be ready (detect shell prompt)
    */
   private async waitForShellReady(timeout: number = 5000): Promise<void> {
-    const startTime = Date.now();
+    // Event-driven: wait for any prompt character in ANSI-stripped session output
+    await this.waitForSessionCondition(
+      () => {
+        const output = stripAnsi(this.session.getOutput());
+        return SHELL_READY_CHARS.some(ch => output.includes(ch));
+      },
+      timeout,
+      undefined,  // Timeout: do not throw, continue
+      false,
+    );
 
-    while (Date.now() - startTime < timeout) {
-      const output = this.session.getOutput();
-      // Shell ready when prompt appears
-      if (output.includes('$') || output.includes('#') || output.includes('%') || output.includes('>')) {
-        await this.sleep(100);  // Extra wait for stability
-        return;
-      }
-      await this.sleep(50);
+    // Wait for output to stabilize before detecting prompt pattern.
+    // Shells like p10k render incrementally: instant prompt ('%') first,
+    // then the full prompt ('❯') ~100-500ms later. If we detect too early,
+    // we'd lock onto '%' instead of the real prompt character.
+    let lastLen = this.session.getOutput().length;
+    const settleStart = Date.now();
+    while (Date.now() - settleStart < 2000) {
+      await this.sleep(200);
+      const curLen = this.session.getOutput().length;
+      if (curLen === lastLen) break;  // No new output for 200ms → stable
+      lastLen = curLen;
     }
-    // Timeout: do not throw, continue
+
+    // Detect prompt pattern from actual shell output
+    this.detectPromptFromOutput();
   }
 
   /**
    * Wait for tmux to be ready (detect shell prompt)
+   * Must stripAnsi before checking because raw asciinema+tmux output
+   * contains prompt-like chars in CSI sequences (e.g. \x1b[>0q).
    */
   private async waitForTmuxReady(timeout: number = 5000): Promise<void> {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeout) {
-      const output = this.session.getOutput();
-      // Tmux ready when prompt appears
-      if (output.includes('$') || output.includes('#') || output.includes('%')) {
+      const output = stripAnsi(this.session.getOutput());
+      if (SHELL_READY_CHARS.some(ch => output.includes(ch))) {
         await this.sleep(300);  // Extra wait for stability
+        // Reinforce prompt detection (backup for detectPromptBeforeRecording)
+        this.detectPromptFromOutput();
         return;
       }
       await this.sleep(100);
@@ -340,7 +377,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       // Recording mode: keep polling (tmux has no push mechanism for pane content)
       while (Date.now() - startTime < timeout) {
         const rawOutput = await this.capturePaneOutput();
-        const output = shouldStripAnsi ? this.stripAnsi(rawOutput) : rawOutput;
+        const output = shouldStripAnsi ? stripAnsi(rawOutput) : rawOutput;
         if (output.includes(text)) {
           return;
         }
@@ -370,7 +407,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     if (this.recording && this.paneIndex !== undefined && this.tmuxSessionName) {
       // Recording mode: capture current pane's output
       const rawOutput = await this.capturePaneOutput();
-      return this.stripAnsi(rawOutput);
+      return stripAnsi(rawOutput);
     }
 
     return this.getAllOutput();
@@ -425,15 +462,6 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     } catch {
       return '';
     }
-  }
-
-  /**
-   * Strip ANSI escape sequences from text
-   */
-  private stripAnsi(text: string): string {
-    // Match common ANSI escape sequences
-    const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
-    return text.replace(ansiRegex, '');
   }
 
   /**
@@ -600,6 +628,14 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
+   * Get the output offset recorded just before the last command was written.
+   * Used by PTYProcessImpl to scope waitForOutputStable and output capture.
+   */
+  getCommandOutputOffset(): number {
+    return this.commandOutputOffset;
+  }
+
+  /**
    * Get the state recorded before sending Enter (for output capture)
    */
   getBeforeEnterState(): { historySize: number; cursorY: number; commandLineCount: number } {
@@ -713,12 +749,14 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     // Common prompt chars
     const promptChars = ['$', '#', '%', '>', '❯', '→', 'λ', '»', '❮', '›', '⟩'];
 
-    // Find prompt char position (last occurrence)
+    // Find prompt char: use lastIndexOf so we pick the char from the FINAL prompt
+    // (PTY output may contain earlier prompts, instant prompts like p10k '%', etc.
+    //  that appear earlier in the stripped single-line output)
     let foundChar = '';
     let charIndex = -1;
 
     for (const char of promptChars) {
-      const idx = promptLine.indexOf(char);
+      const idx = promptLine.lastIndexOf(char);
       if (idx !== -1 && idx > charIndex) {
         charIndex = idx;
         foundChar = char;
@@ -737,14 +775,26 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     const escapedChar = foundChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     if (hasRightContent) {
-      // Right-side prompt: spaces then content
-      return new RegExp(`${escapedChar}\\s{2,}`);
+      // Right-side prompt (e.g. Starship/p10k): char, then space(s), then right-side info.
+      // Use \s+ (not \s{2,}) because padding varies with left-side content width.
+      return new RegExp(`${escapedChar}\\s+`);
     } else {
       // Traditional prompt: char followed by optional space
       // Don't anchor with $ — right-side content (e.g. time) may appear at runtime
       // even if absent during detection
       return new RegExp(`${escapedChar}(\\s|$)`);
     }
+  }
+
+  /**
+   * Detect prompt pattern from current session output.
+   * Only sets detectedPromptPattern if not already set.
+   */
+  private detectPromptFromOutput(): void {
+    if (this.detectedPromptPattern) return;
+    const output = this.session.getOutput();
+    const stripped = stripAnsi(output);
+    this.detectedPromptPattern = this.analyzePromptLine(stripped);
   }
 
   /**
@@ -840,10 +890,10 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    * Wait for command to complete
    * Uses prompt detection only
    */
-  private async waitForOutputStable(timeout: number = 10000): Promise<void> {
+  private async waitForOutputStable(timeout: number = 10000, afterOffset?: number): Promise<void> {
     const startTime = Date.now();
     // Detect prompt (right-side layout); use detected or default pattern
-    const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*/;
+    const promptPattern = this.detectedPromptPattern ?? FALLBACK_PROMPT_PATTERN;
 
     if (this.recording) {
       // Recording mode: keep polling (tmux has no push mechanism)
@@ -851,7 +901,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       while (Date.now() - startTime < timeout) {
         await this.sleep(checkInterval);
         const output = await this.capturePaneOutput();
-        const stripped = this.stripAnsi(output);
+        const stripped = stripAnsi(output);
         const lastLine = stripped.trim().split('\n').pop() || '';
         if (promptPattern.test(lastLine)) {
           return;
@@ -859,10 +909,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       }
     } else {
       // Non-recording mode: event-driven via session 'data'
+      // Use afterOffset to only check NEW output (after command was sent),
+      // avoiding false-positive match on the pre-existing prompt.
       return this.waitForSessionCondition(
         () => {
-          const output = this.session.getOutput();
-          const stripped = this.stripAnsi(output);
+          const fullOutput = this.session.getOutput();
+          const output = afterOffset !== undefined ? fullOutput.substring(afterOffset) : fullOutput;
+          const stripped = stripAnsi(output);
           const lastLine = stripped.trim().split('\n').pop() || '';
           return promptPattern.test(lastLine);
         },
@@ -939,8 +992,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   /**
    * Wait for output to stabilize (public, for PTYProcessImpl)
    */
-  async waitForOutputStablePublic(timeout: number = 10000): Promise<void> {
-    return this.waitForOutputStable(timeout);
+  async waitForOutputStablePublic(timeout: number = 10000, afterOffset?: number): Promise<void> {
+    return this.waitForOutputStable(timeout, afterOffset);
   }
 
   /**
@@ -997,6 +1050,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         this.session.write('\r');
       }
     } else {
+      // Non-recording mode (includes ptyOnly): record offset, then write
+      this.commandOutputOffset = this.session.getOutput().length;
       this.session.write(command + '\n');
     }
 
@@ -1144,18 +1199,10 @@ class PTYProcessImpl implements PTYProcess {
       });
       const stdout = await new Response(proc.stdout).text();
       await proc.exited;
-      return this.stripAnsi(stdout);
+      return stripAnsi(stdout);
     } catch {
       return '';
     }
-  }
-
-  /**
-   * Strip ANSI escapes
-   */
-  private stripAnsi(text: string): string {
-    const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
-    return text.replace(ansiRegex, '');
   }
 
   /**
@@ -1253,7 +1300,10 @@ class PTYProcessImpl implements PTYProcess {
 
     if (this.usePtyMode()) {
       // PTY: wait for output to stabilize
-      await this.terminal.waitForOutputStablePublic(timeout);
+      // Use commandOutputOffset (recorded just before write in executeInPty)
+      // so we only check NEW output, avoiding false match on the pre-existing prompt.
+      const afterOffset = !this.terminal.isRecording() ? this.terminal.getCommandOutputOffset() : undefined;
+      await this.terminal.waitForOutputStablePublic(timeout, afterOffset);
 
       let output: string;
       if (this.terminal.isRecording()) {
@@ -1273,9 +1323,9 @@ class PTYProcessImpl implements PTYProcess {
         // Trim trailing blank lines
         output = output.replace(/\n+$/, '').trim();
       } else {
-        // Non-recording interactive: use session buffer
+        // Non-recording interactive: use session buffer from command start
         const fullOutput = this.terminal.getSessionOutput();
-        output = this.stripAnsi(fullOutput.substring(this.beforeOutputLength));
+        output = stripAnsi(fullOutput.substring(this.terminal.getCommandOutputOffset()));
       }
 
       // Pause after command (recording)
