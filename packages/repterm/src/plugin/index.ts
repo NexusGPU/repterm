@@ -21,8 +21,8 @@ export type BasePluginContext = BasePluginContextGeneric<TestContext>;
 
 // ============== Type Helpers ==============
 
-type ExtractContextOut<T> = T extends PluginDefinition<string, object, infer Out, object> ? Out : {};
-type ExtractMethods<T> = T extends PluginDefinition<string, object, object, infer M> ? M : {};
+type ExtractContextOut<T> = T extends PluginDefinition<string, any, infer Out, any> ? Out : {};
+type ExtractMethods<T> = T extends PluginDefinition<string, any, any, infer M> ? M : {};
 type ExtractName<T> = T extends { name: infer N extends string } ? N : never;
 
 type UnionToIntersection<T> =
