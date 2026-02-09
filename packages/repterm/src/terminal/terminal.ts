@@ -1100,8 +1100,6 @@ class PTYProcessImpl implements PTYProcess {
   // Bun.spawn for non-recording, non-interactive
   private bunProcess?: ReturnType<typeof Bun.spawn>;
   private isInteractive: boolean;
-  // Output start for non-recording interactive
-  private beforeOutputLength: number = 0;
 
   constructor(terminal: Terminal, command: string, options: RunOptions = {}) {
     this.terminal = terminal;
@@ -1214,10 +1212,6 @@ class PTYProcessImpl implements PTYProcess {
 
     if (this.usePtyMode()) {
       // Recording or interactive: use PTY
-      if (!this.terminal.isRecording()) {
-        // Non-recording interactive: record output length
-        this.beforeOutputLength = this.terminal.getOutputLength();
-      }
       // executeInPty records state before Enter; get options from step
       const stepOptions = getCurrentStepOptions();
       const stepName = getCurrentStepName();
