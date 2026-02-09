@@ -4,57 +4,67 @@
  * Run: bun run repterm examples/03-interactive-commands.ts
  *
  * Interactive commands require { interactive: true }. In interactive mode
- * exitCode is unreliable; use output assertions instead.
+ * exitCode is unreliable (-1); use expect() for output assertions instead.
  */
 
 import { test, expect, describe } from 'repterm';
 
 describe('Interactive commands', () => {
-  test('run interactive command with interactive option', async ({ terminal }) => {
+  test('expect — wait for specific output', async ({ terminal }) => {
     // { interactive: true } enables expect/send
-    const proc = terminal.run('echo "step 1"; sleep 0.1; echo "step 2"', { interactive: true });
+    const proc = terminal.run('echo "step 1"; sleep 3; echo "step 2"', { interactive: true });
 
     await proc.expect('step 1');
-    console.log('  Step 1 completed');
+    console.log('  Step 1 appeared');
 
-    const result = await proc;
-    // In interactive mode result.code is unreliable (-1); assert on output
-    expect(result).toContainInOutput('step 2');
+    // Use expect() to verify later output
+    await proc.expect('step 2');
+    console.log('  Step 2 appeared');
+  });
+
+  test('send — send input to a process', async ({ terminal }) => {
+    // cat reads from stdin and echoes back; use send() to provide input
+    const proc = terminal.run('cat', { interactive: true });
+
+    await proc.send('hello from repterm');
+    await proc.expect('hello from repterm');
+    console.log('  Input echoed back');
+
+    await proc.interrupt();
+  });
+
+  test('multi-step expect/send conversation', async ({ terminal }) => {
+    const script = `bash -c 'read -p "Name: " name; echo "Hello $name"; read -p "Age: " age; echo "$name is $age years old"'`;
+    const proc = terminal.run(script, { interactive: true });
+
+    await proc.expect('Name:');
+    await proc.send('Alice');
+    await proc.expect('Hello Alice');
+    console.log('  Round 1 completed');
+
+    await proc.expect('Age:');
+    await proc.send('30');
+    await proc.expect('Alice is 30 years old');
+    console.log('  Round 2 completed');
   });
 });
 
-describe('PTYProcess PromiseLike behavior', () => {
+describe('Process lifecycle', () => {
+  test('interrupt — Ctrl+C to stop a long-running process', async ({ terminal }) => {
+    const proc = terminal.run('sleep 999', { interactive: true });
+
+    // start() launches the command without waiting for completion
+    await proc.start();
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    await proc.interrupt();
+    console.log('  Process interrupted');
+  });
+
   test('PTYProcess can be awaited (non-interactive)', async ({ terminal }) => {
-    // Non-interactive: Bun.spawn, exact exitCode
-    const result = await terminal.run('echo test');
-    expect(result).toSucceed();
-    console.log(`  Exit code: ${result.code}`);
-  });
-
-  test('PTYProcess supports .finally', async ({ terminal }) => {
-    let cleanupCalled = false;
-
-    const result = await terminal.run('echo test').finally(() => {
-      cleanupCalled = true;
-    });
-
-    expect(result).toSucceed();
-    if (!cleanupCalled) {
-      throw new Error('Expected cleanupCalled to be true');
-    }
-  });
-
-  test('non-interactive mode yields separate stdout/stderr', async ({ terminal }) => {
-    const result = await terminal.run('echo "stdout" && echo "stderr" >&2');
-    
-    console.log(`  stdout: ${result.stdout.trim()}`);
-    console.log(`  stderr: ${result.stderr.trim()}`);
-    
-    if (!result.stdout.includes('stdout')) {
-      throw new Error('Expected stdout to contain "stdout"');
-    }
-    if (!result.stderr.includes('stderr')) {
-      throw new Error('Expected stderr to contain "stderr"');
-    }
+    // In record mode, even non-interactive runs use PTY (exitCode is -1)
+    const result = await terminal.run('echo "done"');
+    expect(result).toContainInOutput('done');
+    console.log(`  Exit code: ${result.code}, duration: ${result.duration}ms`);
   });
 });

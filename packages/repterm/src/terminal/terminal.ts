@@ -740,8 +740,10 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       // Right-side prompt: spaces then content
       return new RegExp(`${escapedChar}\\s{2,}`);
     } else {
-      // Traditional: prompt at EOL
-      return new RegExp(`${escapedChar}\\s*$`);
+      // Traditional prompt: char followed by optional space
+      // Don't anchor with $ — right-side content (e.g. time) may appear at runtime
+      // even if absent during detection
+      return new RegExp(`${escapedChar}(\\s|$)`);
     }
   }
 
@@ -841,7 +843,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private async waitForOutputStable(timeout: number = 10000): Promise<void> {
     const startTime = Date.now();
     // Detect prompt (right-side layout); use detected or default pattern
-    const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s+/;
+    const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*/;
 
     if (this.recording) {
       // Recording mode: keep polling (tmux has no push mechanism)
@@ -849,7 +851,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       while (Date.now() - startTime < timeout) {
         await this.sleep(checkInterval);
         const output = await this.capturePaneOutput();
-        const lastLine = output.trim().split('\n').pop() || '';
+        const stripped = this.stripAnsi(output);
+        const lastLine = stripped.trim().split('\n').pop() || '';
         if (promptPattern.test(lastLine)) {
           return;
         }
@@ -859,7 +862,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       return this.waitForSessionCondition(
         () => {
           const output = this.session.getOutput();
-          const lastLine = output.trim().split('\n').pop() || '';
+          const stripped = this.stripAnsi(output);
+          const lastLine = stripped.trim().split('\n').pop() || '';
           return promptPattern.test(lastLine);
         },
         timeout - (Date.now() - startTime),
