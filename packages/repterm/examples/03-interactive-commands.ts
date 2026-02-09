@@ -9,7 +9,7 @@
 
 import { test, expect, describe } from 'repterm';
 
-describe('Interactive commands', { record: true }, () => {
+describe('Interactive commands', () => {
   test('expect — wait for specific output', async ({ terminal }) => {
     // { interactive: true } enables expect/send
     const proc = terminal.run('echo "step 1"; sleep 3; echo "step 2"', { interactive: true });
@@ -49,7 +49,7 @@ describe('Interactive commands', { record: true }, () => {
   });
 });
 
-describe('Process lifecycle', { record: true }, () => {
+describe('Process lifecycle', () => {
   test('interrupt — Ctrl+C to stop a long-running process', async ({ terminal }) => {
     const proc = terminal.run('sleep 999', { interactive: true });
 
