@@ -173,6 +173,16 @@ export interface RunOptions {
    * Recording mode: pause duration before command execution (ms)
    */
   pauseBefore?: number;
+
+  /**
+   * Prompt detection strategy for this command.
+   * - 'auto': use best available (OSC 133 > sentinel > regex)
+   * - 'osc133': force OSC 133 only
+   * - 'sentinel': force sentinel marker
+   * - 'regex': force regex matching
+   * - 'none': skip prompt detection (for long-running commands)
+   */
+  promptDetection?: 'auto' | 'osc133' | 'sentinel' | 'regex' | 'none';
 }
 
 /**

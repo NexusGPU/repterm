@@ -5,6 +5,7 @@
 
 import { spawn, type IPty } from 'bun-pty';
 import { EventEmitter } from 'events';
+import { OSC133Parser } from './shell-integration.js';
 
 export interface SessionConfig {
   cols?: number;
@@ -27,6 +28,9 @@ export class TerminalSession extends EventEmitter {
   private pty: IPty | null = null;
   private outputBuffer: string = '';
   private config: SessionConfig;
+  private osc133Parser: OSC133Parser = new OSC133Parser();
+  /** Max output buffer size (1MB). When exceeded, front half is discarded. */
+  private outputBufferMaxSize = 1024 * 1024;
 
   constructor(config: SessionConfig = {}) {
     super();
@@ -85,7 +89,11 @@ export class TerminalSession extends EventEmitter {
 
     // Capture output
     this.pty.onData((data) => {
+      this.osc133Parser.feed(data);
       this.outputBuffer += data;
+      if (this.outputBuffer.length > this.outputBufferMaxSize) {
+        this.outputBuffer = this.outputBuffer.slice(-Math.floor(this.outputBufferMaxSize / 2));
+      }
       this.emit('data', data);
     });
 
@@ -151,5 +159,19 @@ export class TerminalSession extends EventEmitter {
    */
   getPid(): number | undefined {
     return this.pty?.pid;
+  }
+
+  /**
+   * Get the OSC 133 parser instance
+   */
+  getOSC133Parser(): OSC133Parser {
+    return this.osc133Parser;
+  }
+
+  /**
+   * Check if shell integration (OSC 133) is active
+   */
+  hasShellIntegration(): boolean {
+    return this.osc133Parser.isActive();
   }
 }

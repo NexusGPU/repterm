@@ -10,22 +10,7 @@ import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, P
 import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
 import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
-
-/**
- * Compute tmux output capture line range. Pure function for unit testing.
- */
-export function calculateOutputRange(
-  beforeCursorY: number,
-  beforeHistorySize: number,
-  afterCursorY: number,
-  afterHistorySize: number,
-  promptLineCount: number,
-): { startLine: number; endLine: number } {
-  const historyGrowth = afterHistorySize - beforeHistorySize;
-  const startLine = beforeCursorY + 1 - historyGrowth;
-  const endLine = afterCursorY - promptLineCount;
-  return { startLine, endLine };
-}
+import { createShellInitFile, stripAnsiEnhanced, type ShellIntegrationMode } from './shell-integration.js';
 
 /**
  * CommandResult implementation with successful getter
@@ -68,6 +53,11 @@ export interface TerminalConfig {
   tmuxSessionName?: string;  // For multi-window recording
   tmuxPaneId?: string;  // For split panes
   promptLineCount?: number;  // Override prompt line count, skip auto-detect
+  shellIntegration?: {
+    enabled?: boolean;          // default: true
+    sentinelFallback?: boolean; // default: true
+    shell?: string;             // custom shell path override
+  };
 }
 
 // Shared state for tracking pane count across Terminal and TerminalFactory
@@ -96,17 +86,19 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private pluginFactory?: PluginFactory<Record<string, unknown>>;  // Plugin factory
   public plugins?: Record<string, unknown>;  // Plugin instances (for new terminals)
 
-  // State before sending Enter (for output range capture)
-  private beforeEnterHistorySize: number = 0;
-  private beforeEnterCursorY: number = 0;
-  // Command line count from command content (most reliable)
-  private commandLineCount: number = 0;
   // Detected or configured prompt line count (default 0)
   private promptLineCount: number = 0;
   // Use user-configured value (skip auto-detect)
   private promptLineCountConfigured: boolean = false;
   // Detected prompt match pattern
   private detectedPromptPattern?: RegExp;
+  // Shell integration state
+  private shellIntegrationEnabled: boolean;
+  private shellIntegrationMode: ShellIntegrationMode = 'regex';
+  private shellInitCleanup?: () => void;
+  private lastExitCode: number = -1;
+  // Baseline command_finished event count before current command (for OSC 133)
+  private osc133BaselineCount: number = 0;
 
   constructor(config: TerminalConfig = {}) {
     super();
@@ -124,6 +116,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.promptLineCount = config.promptLineCount;
       this.promptLineCountConfigured = true;
     }
+
+    // Shell integration enabled by default
+    this.shellIntegrationEnabled = config.shellIntegration?.enabled !== false;
 
     // Create session - in recording mode, spawn asciinema; otherwise spawn shell
     this.session = new TerminalSession({
@@ -237,22 +232,103 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const sessionName = `repterm-${Date.now().toString(36)}`;
       this.tmuxSessionName = sessionName;
 
+      // Build tmux command with optional shell integration via rcfile
+      let tmuxCmd: string;
+      let extraEnv: Record<string, string> = {};
+
+      if (this.shellIntegrationEnabled) {
+        const shell = process.env.SHELL || '/bin/bash';
+        const initFile = createShellInitFile(shell);
+
+        if (initFile.filePath) {
+          this.shellInitCleanup = initFile.cleanup;
+          extraEnv = initFile.env;
+          const shellCmd = shell.includes('zsh')
+            ? 'zsh'  // zsh uses ZDOTDIR env var
+            : `bash --rcfile ${initFile.filePath}`;
+          tmuxCmd = `tmux new -s ${sessionName} '${shellCmd}'`;
+        } else {
+          // Unsupported shell or file creation failed → skip injection
+          tmuxCmd = `tmux new -s ${sessionName}`;
+        }
+      } else {
+        tmuxCmd = `tmux new -s ${sessionName}`;
+      }
+
       // Recording: asciinema --command starts tmux. Set TERM=xterm-256color explicitly.
       this.session.start({
         shell: 'asciinema',
-        args: ['rec', '--command', `tmux new -s ${sessionName}`, this.recordingPath, '--overwrite'],
+        args: ['rec', '--command', tmuxCmd, this.recordingPath, '--overwrite'],
         env: {
           TERM: 'xterm-256color',
+          ...extraEnv,
         },
       });
 
-      // Wait for tmux to be ready
-      await this.waitForTmuxReady();
+      // Enable passthrough and wait for shell ready in parallel.
+      // enableTmuxPassthroughWithRetry polls every 50ms until tmux session exists,
+      // enabling passthrough ASAP so the initial OSC 133;A marker from shell init
+      // flows through before the prompt appears.
+      if (this.shellIntegrationEnabled) {
+        const [passthroughOk] = await Promise.all([
+          this.enableTmuxPassthroughWithRetry(sessionName),
+          this.waitForTmuxReady(),
+        ]);
+
+        if (passthroughOk && this.session.hasShellIntegration()) {
+          this.shellIntegrationMode = 'osc133';
+        }
+        // If passthrough failed (unlikely — tmux too old or timeout), lazy upgrade
+        // in waitForOutputStable() will handle it on first real command.
+      } else {
+        await this.waitForTmuxReady();
+      }
+
+      // Detect actual prompt height from the live recording session.
+      // The pre-detection uses a temp 80x24 session, but the recording session
+      // may have different dimensions (e.g. wider terminal where prompt doesn't wrap).
+      // cursor_y after first prompt = number of prompt lines - 1.
+      if (!this.promptLineCountConfigured) {
+        try {
+          const proc = Bun.spawn(['tmux', 'display-message', '-t', `${sessionName}:0.0`, '-p', '#{cursor_y}:#{window_width}:#{window_height}'], {
+            stdout: 'pipe', stderr: 'pipe',
+          });
+          const stdout = await new Response(proc.stdout).text();
+          await proc.exited;
+          const parts = stdout.trim().split(':');
+          const cursorY = parseInt(parts[0], 10);
+          if (!isNaN(cursorY)) {
+            this.promptLineCount = cursorY + 1;
+          }
+        } catch { /* keep pre-detected value */ }
+      }
 
     } else if (this.ptyOnly) {
-      // PTY-only: start shell directly (no asciinema/tmux)
-      this.session.start();
+      // PTY-only: start shell with optional shell integration via rcfile
+      if (this.shellIntegrationEnabled) {
+        const shell = process.env.SHELL || '/bin/bash';
+        const initFile = createShellInitFile(shell);
+
+        if (initFile.filePath) {
+          this.shellInitCleanup = initFile.cleanup;
+          this.session.start({
+            shell,
+            args: initFile.shellArgs,
+            env: initFile.env,
+          });
+        } else {
+          // Unsupported shell or file creation failed → start without injection
+          this.session.start();
+        }
+      } else {
+        this.session.start();
+      }
       await this.waitForShellReady();
+
+      // Check if OSC 133 integration is active
+      if (this.shellIntegrationEnabled && this.session.hasShellIntegration()) {
+        this.shellIntegrationMode = 'osc133';
+      }
 
     } else if (this.tmuxPaneId) {
       // This is a split pane, don't initialize a new session
@@ -261,9 +337,32 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       return;
     } else {
       // Non-recording mode: spawn shell directly
-      this.session.start();
+      // Inject OSC 133 when shell integration is enabled (for interactive commands)
+      if (this.shellIntegrationEnabled) {
+        const shell = process.env.SHELL || '/bin/bash';
+        const initFile = createShellInitFile(shell);
+
+        if (initFile.filePath) {
+          this.shellInitCleanup = initFile.cleanup;
+          this.session.start({
+            shell,
+            args: initFile.shellArgs,
+            env: initFile.env,
+          });
+        } else {
+          // Unsupported shell or file creation failed → start without injection
+          this.session.start();
+        }
+      } else {
+        this.session.start();
+      }
       // Wait for shell to initialize and be ready
       await this.waitForShellReady();
+
+      // Check if OSC 133 integration is active
+      if (this.shellIntegrationEnabled && this.session.hasShellIntegration()) {
+        this.shellIntegrationMode = 'osc133';
+      }
     }
 
     this.initialized = true;
@@ -271,10 +370,22 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
   /**
    * Wait for shell to be ready (detect shell prompt)
+   * When shell integration is enabled, uses OSC 133 prompt_start event for reliable detection.
    */
   private async waitForShellReady(timeout: number = 5000): Promise<void> {
-    const startTime = Date.now();
+    // If shell integration enabled, wait for OSC 133 prompt_start event
+    if (this.shellIntegrationEnabled) {
+      try {
+        const parser = this.session.getOSC133Parser();
+        await parser.waitForEvent('prompt_start', timeout);
+        await this.sleep(100);  // Extra wait for stability
+        return;
+      } catch {
+        // Timeout: fall through to character-based detection
+      }
+    }
 
+    const startTime = Date.now();
     while (Date.now() - startTime < timeout) {
       const output = this.session.getOutput();
       // Shell ready when prompt appears
@@ -288,11 +399,11 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Wait for tmux to be ready (detect shell prompt)
+   * Wait for tmux to be ready (detect shell prompt via character matching).
+   * In recording mode, OSC 133 passthrough is not enabled yet, so we use character detection.
    */
   private async waitForTmuxReady(timeout: number = 5000): Promise<void> {
     const startTime = Date.now();
-
     while (Date.now() - startTime < timeout) {
       const output = this.session.getOutput();
       // Tmux ready when prompt appears
@@ -303,6 +414,41 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await this.sleep(100);
     }
     // On timeout, continue without throwing
+  }
+
+  /**
+   * Wait for shell prompt to be ready (between commands or after interrupt).
+   * In recording mode, polls tmux capture-pane for prompt pattern.
+   * In OSC 133 mode, waits for prompt_start event.
+   */
+  async waitForPromptReady(timeout: number = 3000): Promise<void> {
+    if (this.shellIntegrationMode === 'osc133') {
+      try {
+        const parser = this.session.getOSC133Parser();
+        await parser.waitForEvent('prompt_start', timeout);
+        return;
+      } catch {
+        // Fall through to polling
+      }
+    }
+
+    const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*$/;
+
+    if (this.recording && this.tmuxSessionName && this.paneIndex !== undefined) {
+      const startTime = Date.now();
+      while (Date.now() - startTime < timeout) {
+        const output = await this.capturePaneOutput();
+        const stripped = this.stripAnsi(output);
+        const lastLine = stripped.trim().split('\n').pop() || '';
+        if (promptPattern.test(lastLine)) {
+          return;
+        }
+        await this.sleep(50);
+      }
+    } else {
+      // Non-recording PTY or fallback: brief wait
+      await this.sleep(300);
+    }
   }
 
   /**
@@ -431,9 +577,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    * Strip ANSI escape sequences from text
    */
   private stripAnsi(text: string): string {
-    // Match common ANSI escape sequences
-    const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
-    return text.replace(ansiRegex, '');
+    return stripAnsiEnhanced(text);
   }
 
   /**
@@ -536,6 +680,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.closed = true;
       this.emit('close');
 
+      // Clean up shell integration temp files
+      if (this.shellInitCleanup) {
+        this.shellInitCleanup();
+        this.shellInitCleanup = undefined;
+      }
+
       // After recording, clean up tmux session (outside recording)
       if (tmuxSessionToClean) {
         await this.cleanupTmuxSession(tmuxSessionToClean);
@@ -555,6 +705,34 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     } catch {
       // Ignore errors - session may already be terminated
     }
+  }
+
+  /**
+   * Enable DCS passthrough for a tmux session.
+   * Uses set-option (works even if tmux server is already running).
+   * Poll until tmux session exists, then enable DCS passthrough.
+   * Retries set-option every 50ms until success or timeout.
+   * Returns true if passthrough was enabled, false on timeout.
+   */
+  private async enableTmuxPassthroughWithRetry(
+    sessionName: string,
+    timeout: number = 5000,
+  ): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      try {
+        const proc = Bun.spawn(
+          ['tmux', 'set-option', '-t', sessionName, 'allow-passthrough', 'on'],
+          { stdout: 'pipe', stderr: 'pipe' },
+        );
+        const code = await proc.exited;
+        if (code === 0) return true;
+      } catch {
+        // spawn failed — continue retrying
+      }
+      await this.sleep(50);
+    }
+    return false;
   }
 
   /**
@@ -600,40 +778,6 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Get the state recorded before sending Enter (for output capture)
-   */
-  getBeforeEnterState(): { historySize: number; cursorY: number; commandLineCount: number } {
-    return {
-      historySize: this.beforeEnterHistorySize,
-      cursorY: this.beforeEnterCursorY,
-      commandLineCount: this.commandLineCount,
-    };
-  }
-
-  /**
-   * Record state before sending Enter (internal use)
-   * Single tmux query for history_size and cursor_y to avoid race.
-   */
-  private async recordBeforeEnterState(): Promise<void> {
-    if (!this.tmuxSessionName || this.paneIndex === undefined) return;
-
-    try {
-      // Atomic: single tmux call for history_size and cursor_y
-      const proc = Bun.spawn(['tmux', 'display-message', '-t', `${this.tmuxSessionName}:0.${this.paneIndex}`, '-p', '#{history_size}:#{cursor_y}'], {
-        stdout: 'pipe', stderr: 'pipe'
-      });
-      const stdout = await new Response(proc.stdout).text();
-      await proc.exited;
-      const parts = stdout.trim().split(':');
-      this.beforeEnterHistorySize = parseInt(parts[0], 10) || 0;
-      this.beforeEnterCursorY = parseInt(parts[1], 10) || 0;
-    } catch {
-      this.beforeEnterHistorySize = 0;
-      this.beforeEnterCursorY = 0;
-    }
-  }
-
-  /**
    * Detect prompt before recording (line count, pattern) via temp tmux session.
    */
   private async detectPromptBeforeRecording(): Promise<void> {
@@ -642,7 +786,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     try {
       // Create temp tmux session
-      await Bun.spawn(['tmux', 'new-session', '-d', '-s', tempSessionName, '-x', '80', '-y', '24']).exited;
+      await Bun.spawn(['tmux', 'new-session', '-d', '-s', tempSessionName, '-x', '80', '-y', '24'], {
+        stdout: 'pipe', stderr: 'pipe',
+      }).exited;
       await this.sleep(1000); // Wait for shell to start
 
       // Capture prompt pattern before sending command
@@ -654,7 +800,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.detectedPromptPattern = this.analyzePromptLine(promptScreen);
 
       // Send test command to detect prompt line count
-      await Bun.spawn(['tmux', 'send-keys', '-t', tempSessionName, `echo ${testMarker}`, 'Enter']).exited;
+      await Bun.spawn(['tmux', 'send-keys', '-t', tempSessionName, `echo ${testMarker}`, 'Enter'], {
+        stdout: 'pipe', stderr: 'pipe',
+      }).exited;
       await this.sleep(1000); // Wait for command to finish
 
       // Get current cursorY
@@ -687,14 +835,18 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       }
 
       // Kill temp session
-      await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName]).exited;
+      await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName], {
+        stdout: 'pipe', stderr: 'pipe',
+      }).exited;
     } catch {
       // On failure keep defaults
       this.promptLineCount = 0;
       this.detectedPromptPattern = undefined;
       // Try to kill temp session
       try {
-        await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName]).exited;
+        await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName], {
+          stdout: 'pipe', stderr: 'pipe',
+        }).exited;
       } catch { /* ignore */ }
     }
   }
@@ -718,7 +870,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     let charIndex = -1;
 
     for (const char of promptChars) {
-      const idx = promptLine.indexOf(char);
+      const idx = promptLine.lastIndexOf(char);
       if (idx !== -1 && idx > charIndex) {
         charIndex = idx;
         foundChar = char;
@@ -759,6 +911,21 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   getDetectedPromptPattern(): RegExp | undefined {
     return this.detectedPromptPattern;
+  }
+
+  /**
+   * Get current shell integration mode
+   */
+  getShellIntegrationMode(): ShellIntegrationMode {
+    return this.shellIntegrationMode;
+  }
+
+  /**
+   * Get last captured exit code (from OSC 133 D marker)
+   * Returns -1 if shell integration is not active or no exit code captured.
+   */
+  getLastExitCode(): number {
+    return this.lastExitCode;
   }
 
   /**
@@ -837,13 +1004,28 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
-   * Wait for command to complete
-   * Uses prompt detection only
+   * Wait for command to complete.
+   * Uses three-layer detection: OSC 133 > Sentinel > Enhanced regex.
    */
   private async waitForOutputStable(timeout: number = 10000): Promise<void> {
     const startTime = Date.now();
-    // Detect prompt (right-side layout); use detected or default pattern
-    const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*/;
+
+    // Layer 1: OSC 133 event-driven detection
+    if (this.shellIntegrationMode === 'osc133') {
+      const parser = this.session.getOSC133Parser();
+      // Use baseline count recorded before command execution to avoid race condition
+      const targetCount = this.osc133BaselineCount + 1;
+      try {
+        const event = await parser.waitForNthEvent('command_finished', targetCount, timeout);
+        this.lastExitCode = event.exitCode ?? 0;
+        return;
+      } catch {
+        // Timeout: fall through to regex
+      }
+    }
+
+    // Layer 2/3: Regex-based prompt detection (original behavior, improved)
+    const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*$/;
 
     if (this.recording) {
       // Recording mode: keep polling (tmux has no push mechanism)
@@ -854,12 +1036,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         const stripped = this.stripAnsi(output);
         const lastLine = stripped.trim().split('\n').pop() || '';
         if (promptPattern.test(lastLine)) {
-          return;
+          break;
         }
       }
     } else {
       // Non-recording mode: event-driven via session 'data'
-      return this.waitForSessionCondition(
+      await this.waitForSessionCondition(
         () => {
           const output = this.session.getOutput();
           const stripped = this.stripAnsi(output);
@@ -870,6 +1052,37 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         undefined,  // no throw on timeout (matches original behavior)
         false,      // no _outputChanged needed (prompt detection is PTY-only)
       );
+    }
+
+    // Lazy upgrade: if shell integration is enabled but wasn't detected during init
+    // (e.g. passthrough enabled too late), check if markers arrived during this command.
+    // If so, upgrade to osc133 mode for subsequent commands and capture this command's exit code.
+    if (this.shellIntegrationEnabled && this.shellIntegrationMode !== 'osc133') {
+      // Brief wait for markers to arrive through the PTY data stream.
+      // Markers travel: shell → tmux passthrough → asciinema → PTY → parser.
+      // By the time regex detects the prompt, markers are typically in-flight.
+      if (!this.session.hasShellIntegration()) {
+        await this.sleep(200);
+      }
+      if (this.session.hasShellIntegration()) {
+        this.shellIntegrationMode = 'osc133';
+        // Try to capture exit code from this command's markers
+        const parser = this.session.getOSC133Parser();
+        const targetCount = this.osc133BaselineCount + 1;
+        const matching = parser.getEvents().filter(e => e.type === 'command_finished');
+        if (matching.length >= targetCount) {
+          this.lastExitCode = matching[targetCount - 1].exitCode ?? -1;
+        } else {
+          // Markers not yet arrived — wait briefly
+          try {
+            const event = await parser.waitForNthEvent('command_finished', targetCount, 2000);
+            this.lastExitCode = event.exitCode ?? -1;
+          } catch {
+            // Timeout: markers didn't arrive, keep regex mode for this command
+            this.shellIntegrationMode = 'regex';
+          }
+        }
+      }
     }
   }
 
@@ -968,13 +1181,17 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       markStepTitleShown();
     }
 
-    // Record command line count from content
-    this.commandLineCount = command.split('\n').length;
+    // Record OSC 133 baseline before sending command (avoid race condition)
+    if (this.shellIntegrationMode === 'osc133') {
+      this.osc133BaselineCount = this.session.getOSC133Parser().countEvents('command_finished');
+    }
 
     // In recording mode, type with human-like delay
     if (this.recording) {
       await this.selectPane();
-      await this.sleep(300);
+      // Wait for shell prompt to be ready (replaces blind sleep;
+      // critical after interrupt() or rapid sequential commands)
+      await this.waitForPromptReady();
 
       const hasNewline = command.includes('\n');
       const typingSpeed = options?.typingSpeed ?? 80;
@@ -985,15 +1202,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       } else if (typingSpeed === 0) {
         // When typing disabled: write fast
         this.session.write(command);
-        await this.sleep(100);
-        // Record state before sending Enter
-        await this.recordBeforeEnterState();
+        // Wait for tmux to render the command echo (including line wrapping).
+        await this.sleep(200);
         this.session.write('\r');
       } else {
         // Normal command: human typing
         await this.typeWithDelay(command, typingSpeed, true);
-        // Record state before sending Enter
-        await this.recordBeforeEnterState();
         this.session.write('\r');
       }
     } else {
@@ -1017,16 +1231,17 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     const wrappedContent = PASTE_START + command + PASTE_END;
 
     // tmux send-keys -l for literal content
-    await Bun.spawn(['tmux', 'send-keys', '-l', '-t', paneTarget, wrappedContent]).exited;
+    await Bun.spawn(['tmux', 'send-keys', '-l', '-t', paneTarget, wrappedContent], {
+      stdout: 'pipe', stderr: 'pipe',
+    }).exited;
 
     // Wait for shell to process
     await this.sleep(500);
 
-    // Record state before Enter (for output range)
-    await this.recordBeforeEnterState();
-
     // Send Enter to run command
-    await Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'Enter']).exited;
+    await Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'Enter'], {
+      stdout: 'pipe', stderr: 'pipe',
+    }).exited;
 
     await this.sleep(200);
   }
@@ -1103,59 +1318,10 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * Get pane state atomically (single tmux call)
-   */
-  private async getPaneStateAtomic(): Promise<{ historySize: number; cursorY: number }> {
-    if (!this.terminal.isRecording()) return { historySize: 0, cursorY: 0 };
-
-    const tmuxSession = this.terminal.getTmuxSessionName();
-    const paneIndex = this.terminal.getPaneIndex();
-    if (!tmuxSession || paneIndex === undefined) return { historySize: 0, cursorY: 0 };
-
-    try {
-      const proc = Bun.spawn(['tmux', 'display-message', '-t', `${tmuxSession}:0.${paneIndex}`, '-p', '#{history_size}:#{cursor_y}'], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const stdout = await new Response(proc.stdout).text();
-      await proc.exited;
-      const parts = stdout.trim().split(':');
-      return {
-        historySize: parseInt(parts[0], 10) || 0,
-        cursorY: parseInt(parts[1], 10) || 0,
-      };
-    } catch {
-      return { historySize: 0, cursorY: 0 };
-    }
-  }
-
-  /**
-   * Capture pane output range. startLine/endLine: negative=history, '-'=start/current
-   */
-  private async capturePaneRange(startLine: string, endLine: string): Promise<string> {
-    const tmuxSession = this.terminal.getTmuxSessionName();
-    const paneIndex = this.terminal.getPaneIndex();
-    if (!tmuxSession || paneIndex === undefined) return '';
-
-    try {
-      const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`, '-S', startLine, '-E', endLine], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      const stdout = await new Response(proc.stdout).text();
-      await proc.exited;
-      return this.stripAnsi(stdout);
-    } catch {
-      return '';
-    }
-  }
-
-  /**
    * Strip ANSI escapes
    */
   private stripAnsi(text: string): string {
-    const ansiRegex = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[()][AB012]|\x1b[=>]|\x1b\[\?[0-9;]*[a-zA-Z]/g;
-    return text.replace(ansiRegex, '');
+    return stripAnsiEnhanced(text);
   }
 
   /**
@@ -1257,25 +1423,31 @@ class PTYProcessImpl implements PTYProcess {
 
       let output: string;
       if (this.terminal.isRecording()) {
-        // Recording: use state before Enter for output range
-        const beforeEnterState = this.terminal.getBeforeEnterState();
-        const afterState = await this.getPaneStateAtomic();
+        // Wait for the new prompt to fully render in tmux pane.
+        // In OSC 133 mode, waitForOutputStable returns on D marker, which fires
+        // in precmd BEFORE zsh draws PS1. Complex prompts (starship, powerlevel10k)
+        // may take 200-500ms to render after D marker. Poll capture-pane for a
+        // "bare prompt" line (prompt char with no command text after it) to confirm
+        // the new prompt has been fully drawn.
+        await this.waitForBarePrompt();
 
-        const { startLine: outputStartLine, endLine } = calculateOutputRange(
-          beforeEnterState.cursorY,
-          beforeEnterState.historySize,
-          afterState.cursorY,
-          afterState.historySize,
-          this.terminal.getPromptLineCount(),
-        );
-        output = await this.capturePaneRange(String(outputStartLine), String(endLine));
+        // Content-based output extraction: capture full pane, find command echo
+        // and new prompt, extract everything in between. This avoids fragile
+        // cursor-position math that breaks with line wrapping, complex prompts,
+        // and timing-sensitive cursor reads.
+        output = await this.extractOutputFromPane();
 
         // Trim trailing blank lines
         output = output.replace(/\n+$/, '').trim();
       } else {
-        // Non-recording interactive: use session buffer
+        // Non-recording PTY: use session buffer with content-based extraction
+        // to strip command echo and trailing prompt (same logic as recording mode).
         const fullOutput = this.terminal.getSessionOutput();
-        output = this.stripAnsi(fullOutput.substring(this.beforeOutputLength));
+        const rawOutput = this.stripAnsi(fullOutput.substring(this.beforeOutputLength));
+        output = this.extractOutputFromText(rawOutput);
+
+        // Trim trailing blank lines
+        output = output.replace(/\n+$/, '').trim();
       }
 
       // Pause after command (recording)
@@ -1289,7 +1461,9 @@ class PTYProcessImpl implements PTYProcess {
       }
 
       const result = new CommandResultImpl({
-        code: -1, // PTY: exitCode unreliable
+        code: this.terminal.getShellIntegrationMode() === 'osc133'
+          ? this.terminal.getLastExitCode()
+          : -1, // PTY without shell integration: exitCode unreliable
         stdout: output,
         stderr: '',
         output,
@@ -1360,6 +1534,157 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
+   * Wait for a "bare prompt" to appear as the last line in the tmux pane.
+   * A bare prompt is a line where the prompt character (❯, $, #, etc.) has
+   * no command text after it — indicating the shell is ready for input.
+   *
+   * This distinguishes the NEW prompt from the old prompt + command echo line.
+   * For example, "❯ (exit 1)" is NOT bare (has command text), but "❯ " IS bare.
+   *
+   * Used after waitForOutputStable (which returns on D marker before PS1 renders)
+   * to ensure the prompt has been fully drawn before reading cursor position.
+   */
+  private async waitForBarePrompt(timeout: number = 5000): Promise<void> {
+    const tmuxSession = this.terminal.getTmuxSessionName();
+    const paneIndex = this.terminal.getPaneIndex();
+    if (!tmuxSession || paneIndex === undefined) return;
+
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      try {
+        const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`], {
+          stdout: 'pipe', stderr: 'pipe',
+        });
+        const stdout = await new Response(proc.stdout).text();
+        await proc.exited;
+        const stripped = this.stripAnsi(stdout);
+        const lines = stripped.trimEnd().split('\n');
+        const lastLine = lines[lines.length - 1] || '';
+
+        if (this.isBarePromptLine(lastLine)) {
+          return;
+        }
+      } catch {
+        // ignore tmux errors
+      }
+      await this.sleep(50);
+    }
+  }
+
+  /**
+   * Check if a line is a "bare" prompt — prompt character with no command text after it.
+   */
+  private isBarePromptLine(line: string): boolean {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+
+    const promptChars = ['$', '#', '%', '>', '❯', '→', 'λ', '»', '❮', '›', '⟩'];
+    for (const ch of promptChars) {
+      const idx = trimmed.lastIndexOf(ch);
+      if (idx >= 0) {
+        const afterPrompt = trimmed.substring(idx + ch.length);
+        // Bare prompt conditions:
+        // 1. Nothing after prompt char
+        // 2. Only whitespace after prompt char
+        // 3. Content separated by 2+ spaces (right-aligned decoration like timestamps)
+        //    A typed command has exactly 1 space: "❯ cmd", while bare has "❯  " or "❯   at 15:57"
+        if (afterPrompt.length === 0 || afterPrompt.trim().length === 0 || /^\s{2,}/.test(afterPrompt)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Content-based output extraction from tmux pane.
+   * Captures full pane (including scrollback), then delegates to extractOutputFromText.
+   */
+  private async extractOutputFromPane(): Promise<string> {
+    const tmuxSession = this.terminal.getTmuxSessionName();
+    const paneIndex = this.terminal.getPaneIndex();
+    if (!tmuxSession || paneIndex === undefined) return '';
+
+    try {
+      // Capture full pane including scrollback
+      const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`, '-S', '-', '-E', '-'], {
+        stdout: 'pipe', stderr: 'pipe',
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      const stripped = this.stripAnsi(stdout);
+      return this.extractOutputFromText(stripped);
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Extract command output from terminal text content.
+   * Finds the command echo line, finds the next bare prompt, returns everything in between.
+   * Works with both tmux capture-pane output and raw PTY session buffer (after stripAnsi).
+   *
+   * @param strippedText - ANSI-stripped terminal text content
+   */
+  private extractOutputFromText(strippedText: string): string {
+    // Clean \r from PTY raw output (tmux capture-pane doesn't have \r, but session buffer does)
+    const lines = strippedText.split('\n').map(l => l.replace(/\r/g, ''));
+
+    // Find the LAST occurrence of the command text (command echo line).
+    // Use the first line of the command for multiline commands (heredoc, etc.),
+    // since each visual row in capture-pane is a separate line.
+    const firstLine = this.command.split('\n')[0];
+    const cmdPrefix = firstLine.substring(0, Math.min(40, firstLine.length));
+    let cmdLine = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes(cmdPrefix)) {
+        cmdLine = i;
+        break;
+      }
+    }
+
+    if (cmdLine === -1) {
+      // Command echo not found — fall back to empty
+      return '';
+    }
+
+    // Handle command echo that wraps to multiple visual lines.
+    // For multiline commands (heredoc, etc.), the command echo spans multiple lines.
+    // Skip all lines that are part of the command text.
+    let outputStart = cmdLine + 1;
+
+    // For multiline commands (heredoc, etc.), skip additional command echo lines
+    if (this.command.includes('\n')) {
+      const cmdLines = this.command.split('\n');
+      for (let j = 1; j < cmdLines.length && outputStart < lines.length; j++) {
+        const expectedLine = cmdLines[j].trim();
+        if (expectedLine && lines[outputStart]?.trim() === expectedLine) {
+          outputStart++;
+        }
+      }
+    }
+
+    // Find the LAST bare prompt AFTER the command echo (this is the new prompt)
+    let promptStart = lines.length; // default: end of text (no prompt found)
+    for (let i = lines.length - 1; i > cmdLine; i--) {
+      if (this.isBarePromptLine(lines[i])) {
+        promptStart = i;
+        // For multi-line prompts, the prompt might start above.
+        // Adjust for promptLineCount (e.g., 2-line prompt starts 1 line above ❯).
+        const promptCount = this.terminal.getPromptLineCount();
+        if (promptCount > 1) {
+          promptStart = Math.max(outputStart, i - (promptCount - 1));
+        }
+        break;
+      }
+    }
+
+    // Extract output lines between command echo and prompt
+    const outputLines = lines.slice(outputStart, promptStart);
+    return outputLines.join('\n');
+  }
+
+  /**
    * Send Ctrl+C to interrupt the command
    * In recording mode with tmux, sends directly to the target pane
    */
@@ -1374,10 +1699,14 @@ class PTYProcessImpl implements PTYProcess {
         // tmux send-keys to target pane
         await Bun.spawn([
           'tmux', 'send-keys', '-t', `${tmuxSession}:0.${paneIndex}`, 'C-c'
-        ]).exited;
+        ], { stdout: 'pipe', stderr: 'pipe' }).exited;
       } else {
         await this.terminal.send('\x03');  // Ctrl+C
       }
+
+      // Allow time for signal processing and trap handlers.
+      // Full prompt recovery is handled by waitForPromptReady() in executeInPty().
+      await this.sleep(200);
     }
   }
 }

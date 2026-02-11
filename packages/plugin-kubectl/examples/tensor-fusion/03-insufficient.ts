@@ -40,14 +40,14 @@ describe('Test Scenario 3: Insufficient Resource Scenario', { record: true }, ()
         // ===== Step 1: Record initial state =====
         await step('Acquire test GPU', {
             showStepTitle: false,
-            typingSpeed: 60,
+            typingSpeed: 0,
             pauseAfter: 1000
         }, async () => {
             gpuName = await getFirstGpuName(kubectl);
         });
 
         await step('Record initial available resources', {
-            typingSpeed: 60,
+            typingSpeed: 0,
             pauseAfter: 1500
         }, async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
@@ -58,7 +58,7 @@ describe('Test Scenario 3: Insufficient Resource Scenario', { record: true }, ()
         // ===== Step 2: Create Workload with excessive resource request (core operation) =====
         await step('Create Workload with excessive resource request', {
             showStepTitle: false,
-            typingSpeed: 100,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             // Request 100 TFlops and 100Gi VRAM - far exceeds any single GPU capacity
@@ -76,6 +76,7 @@ describe('Test Scenario 3: Insufficient Resource Scenario', { record: true }, ()
         // ===== Step 3: Watch in main pane, verify in new pane =====
         await step('Watch Workload status and verify', {
             showStepTitle: false,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             // Start watch in main pane (returns after command input completes)
@@ -118,7 +119,7 @@ describe('Test Scenario 3: Insufficient Resource Scenario', { record: true }, ()
         // ===== Step 4: Cleanup =====
         await step('Delete TensorFusionWorkload', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);

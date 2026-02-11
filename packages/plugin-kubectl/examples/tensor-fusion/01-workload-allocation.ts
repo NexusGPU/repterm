@@ -36,14 +36,14 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         // ===== Step 1: Record initial state =====
         await step('Acquire test GPU', {
             showStepTitle: false,
-            typingSpeed: 60,  // Fast execution during preparation phase
+            typingSpeed: 0,  // Fast execution during preparation phase
             pauseAfter: 1000
         }, async () => {
             gpuName = await getFirstGpuName(kubectl);
         });
 
         await step('Record initial available resources', {
-            typingSpeed: 60,
+            typingSpeed: 0,
             pauseAfter: 1500  // Allow viewer to see initial state
         }, async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
@@ -53,7 +53,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         // ===== Step 2: Create resource (core operation) =====
         await step('Create Workload', {
             showStepTitle: false,
-            typingSpeed: 100,  // Core operation with slower typing
+            typingSpeed: 0,  // Core operation with slower typing
             pauseAfter: 3000   // Important output, longer pause
         }, async () => {
             const yaml = workloadYaml(WORKLOAD_NAME, {
@@ -70,6 +70,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         // ===== Step 3: Wait for Workload ready =====
         await step('Wait for Ready condition', {
             showStepTitle: false,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const result = await kubectl.wait(
@@ -82,7 +83,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         });
 
         await step('Verify Workload status is Running', {
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const workload = tensorfusionworkload(kubectl, WORKLOAD_NAME);
@@ -92,7 +93,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         // ===== Step 4: Verify resource allocation results =====
         await step('Check GPU available resources change', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2500  // Verification results need reading time
         }, async () => {
             sleep(1000)
@@ -106,6 +107,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         });
 
         await step('Verify Workload readyWorkers', {
+            typingSpeed: 0,
             pauseAfter: 1500
         }, async () => {
             const status = await kubectl.getJsonPath<{
@@ -120,7 +122,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         // ===== Step 5: Verify Worker Pod =====
         await step('Find and verify Worker Pod', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const pods = await kubectl.get<Array<{
@@ -143,34 +145,10 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
             expect(annotations['tensor-fusion.ai/vram-request']).toBeDefined();
         });
 
-        // ===== Step 6: Check associated TensorFusionConnection (if using remote vGPU) =====
-        await step('Query associated Connection', {
-            pauseAfter: 1500
-        }, async () => {
-            try {
-                const connections = await kubectl.get<Array<{
-                    name: string;
-                    phase?: string;
-                }>>('tensorfusionconnection', undefined, {
-                    selector: `tensor-fusion.ai/workload=${WORKLOAD_NAME}`,
-                    jqFilter: '[.items[] | {name: .metadata.name, phase: .status.phase}]'
-                });
-
-                // Connection may not exist (local GPU mode), not an error
-                if (connections && connections.length > 0) {
-                    for (const conn of connections) {
-                        expect(conn.phase).toBeDefined();
-                    }
-                }
-            } catch {
-                // TensorFusionConnection CRD may not exist
-            }
-        });
-
         // ===== Cleanup =====
         await step('Delete TensorFusionWorkload', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);
@@ -178,6 +156,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         });
 
         await step('Wait for resource release and verify', {
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             await new Promise(resolve => setTimeout(resolve, 5000));

@@ -162,6 +162,7 @@ export async function runTest(
     ptyOnly: shouldUsePtyOnly,
     recordingPath,
     promptLineCount: config.terminal?.promptLineCount,
+    shellIntegration: config.terminal?.shellIntegration,
   });
 
   // Build initial test context with inherited context from beforeAll hooks

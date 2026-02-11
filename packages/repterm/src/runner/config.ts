@@ -17,6 +17,11 @@ export interface RunConfig {
   };
   terminal: {
     promptLineCount?: number;  // undefined = auto-detect
+    shellIntegration?: {
+      enabled?: boolean;          // default: true
+      sentinelFallback?: boolean; // default: true
+      shell?: string;             // custom shell path override
+    };
   };
 }
 
@@ -34,6 +39,11 @@ export interface ConfigOptions {
   };
   terminal?: {
     promptLineCount?: number;
+    shellIntegration?: {
+      enabled?: boolean;
+      sentinelFallback?: boolean;
+      shell?: string;
+    };
   };
 }
 
@@ -72,6 +82,7 @@ export function loadConfig(options: ConfigOptions = {}): RunConfig {
     },
     terminal: {
       promptLineCount: options.terminal?.promptLineCount,
+      shellIntegration: options.terminal?.shellIntegration,
     },
   };
 
