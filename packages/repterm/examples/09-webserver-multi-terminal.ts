@@ -12,11 +12,11 @@
 import { test, expect, describe } from 'repterm';
 
 describe('WebServer Multi-terminal Test', { record: true }, () => {
-    test('Start server and access from another terminal', async ({ terminal }) => {
+    test('Start server and access from another terminal', async ({ $, terminal }) => {
         const PORT = 18080;
 
         // 1. Start web server in default terminal (interactive, don't await)
-        const server = terminal.run(`python3 -m http.server ${PORT}`, { interactive: true });
+        const server = $({ interactive: true })`python3 -m http.server ${PORT}`;
 
         // Wait for server startup to complete
         await server.expect(`Serving HTTP on`);
@@ -27,7 +27,7 @@ describe('WebServer Multi-terminal Test', { record: true }, () => {
 
         try {
             // 3. Use curl to access server (interactive mode)
-            const curlProc = clientTerminal.run(`curl -s http://localhost:${PORT}/`, { interactive: true });
+            const curlProc = clientTerminal.$({ interactive: true })`curl -s http://localhost:${PORT}/`;
 
             // Wait for curl to return (match href in HTML, more reliable than title)
             await curlProc.expect('href');
@@ -41,12 +41,12 @@ describe('WebServer Multi-terminal Test', { record: true }, () => {
         }
     });
 
-    test('Use file for inter-process communication', async ({ terminal }) => {
+    test('Use file for inter-process communication', async ({ $, terminal }) => {
         const COMM_FILE = '/tmp/repterm-ipc-test.txt';
 
         // 1. Write message in main terminal
         // Note: Must use await to wait for command completion, or use expect() to ensure execution
-        const writeProc = terminal.run(`echo "Hello from main terminal" > ${COMM_FILE} && echo "WRITE_DONE"`, { interactive: true });
+        const writeProc = $({ interactive: true })`echo "Hello from main terminal" > ${COMM_FILE} && echo "WRITE_DONE"`;
         await writeProc.expect('WRITE_DONE');  // Use deterministic marker instead of shell prompt
         console.log('  [Main] Message written');
 
@@ -55,23 +55,23 @@ describe('WebServer Multi-terminal Test', { record: true }, () => {
 
         try {
             // 3. Read message in second terminal
-            const readProc = secondTerminal.run(`cat ${COMM_FILE}`, { interactive: true });
+            const readProc = secondTerminal.$({ interactive: true })`cat ${COMM_FILE}`;
             await readProc.expect('Hello from main terminal');
             console.log('  [Second] Message read');
 
             // 4. Append response in second terminal
-            const appendProc = secondTerminal.run(`echo "Response from second terminal" >> ${COMM_FILE} && echo "APPEND_DONE"`, { interactive: true });
+            const appendProc = secondTerminal.$({ interactive: true })`echo "Response from second terminal" >> ${COMM_FILE} && echo "APPEND_DONE"`;
             await appendProc.expect('APPEND_DONE');
             console.log('  [Second] Response appended');
 
             // 5. Verify complete content in main terminal
-            const verifyProc = terminal.run(`cat ${COMM_FILE}`, { interactive: true });
+            const verifyProc = $({ interactive: true })`cat ${COMM_FILE}`;
             await verifyProc.expect('Response from second terminal');
             console.log('  [Main] Verification successful');
 
         } finally {
             // Cleanup temporary file
-            const cleanProc = terminal.run(`rm -f ${COMM_FILE} && echo "CLEANUP_DONE"`, { interactive: true });
+            const cleanProc = $({ interactive: true })`rm -f ${COMM_FILE} && echo "CLEANUP_DONE"`;
             await cleanProc.expect('CLEANUP_DONE');
         }
     });

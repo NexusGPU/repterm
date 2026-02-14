@@ -142,7 +142,7 @@ describe('PTY-only mode', () => {
     });
 });
 
-describe('run() with CommandResult', () => {
+describe('$`` with CommandResult', () => {
     let terminal: Terminal | null = null;
 
     afterEach(async () => {
@@ -154,7 +154,7 @@ describe('run() with CommandResult', () => {
 
     test('returns PTYProcess that resolves to CommandResult', async () => {
         terminal = createTerminal({ recording: false });
-        const proc = terminal.run('echo "hello"');
+        const proc = terminal.$`echo "hello"`;
 
         // PTYProcess should have then method (PromiseLike)
         expect(typeof proc.then).toBe('function');
@@ -171,7 +171,7 @@ describe('run() with CommandResult', () => {
 
     test('CommandResult includes duration and command fields', async () => {
         terminal = createTerminal({ recording: false });
-        const result = await terminal.run('echo "test"');
+        const result = await terminal.$`echo "test"`;
 
         expect(result.code).toBe(0);
         expect(result.command).toBe('echo "test"');
@@ -182,7 +182,7 @@ describe('run() with CommandResult', () => {
 
     test('returns non-zero exit code without throwing', async () => {
         terminal = createTerminal({ recording: false });
-        const result = await terminal.run('exit 42');
+        const result = await terminal.$`exit 42`;
 
         expect(result.code).toBe(42);
         expect(result.successful).toBe(false);
@@ -190,7 +190,7 @@ describe('run() with CommandResult', () => {
 
     test('separates stdout and stderr via launcher', async () => {
         terminal = createTerminal({ recording: false });
-        const result = await terminal.run('echo "out"; echo "err" >&2');
+        const result = await terminal.$`echo "out"; echo "err" >&2`;
 
         expect(result.code).toBe(0);
         expect(result.stdout).toContain('out');
@@ -201,7 +201,7 @@ describe('run() with CommandResult', () => {
 
     test('returns stderr in error case', async () => {
         terminal = createTerminal({ recording: false });
-        const result = await terminal.run('ls /non-existent-path-12345');
+        const result = await terminal.$`ls /non-existent-path-12345`;
 
         expect(result.code).not.toBe(0);
         expect(result.successful).toBe(false);
@@ -209,7 +209,7 @@ describe('run() with CommandResult', () => {
 
     test('output combines stdout and stderr', async () => {
         terminal = createTerminal({ recording: false });
-        const result = await terminal.run('echo "stdout"; echo "stderr" >&2');
+        const result = await terminal.$`echo "stdout"; echo "stderr" >&2`;
 
         expect(result.output).toContain('stdout');
         expect(result.output).toContain('stderr');

@@ -229,7 +229,7 @@ describe('Runner Lifecycle Hooks', () => {
     test('captures terminal command logs on test failure', async () => {
         describeBlock('Failing Suite', () => {
             registerTest('failing test with command', async ({ terminal }) => {
-                await terminal.run('echo "hello from command"');
+                await terminal.$`echo "hello from command"`;
                 throw new Error('boom');
             });
         });

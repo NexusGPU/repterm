@@ -30,22 +30,22 @@ describe('Temporary Directory Fixture', () => {
     }
   });
 
-  test('Create file in temporary directory', async ({ terminal, tmpDir }) => {
-    const result = await terminal.run(`touch ${tmpDir}/test.txt && ls ${tmpDir}`);
+  test('Create file in temporary directory', async ({ $, tmpDir }) => {
+    const result = await $`touch ${tmpDir}/test.txt && ls ${tmpDir}`;
     expect(result).toSucceed();
     expect(result).toHaveStdout('test.txt');
   });
 
-  test('Not running before/after', async ({ terminal }) => {
+  test('Not running before/after', async ({ $ }) => {
     // This test doesn't need tmpDir, so beforeEach/afterEach won't be triggered
     console.log('  [Test] This test will not trigger tmpDir fixture');
-    await terminal.run('echo "Hello World"');
+    await $`echo "Hello World"`;
   });
 
-  test('Write and read file in temporary directory', async ({ terminal, tmpDir }) => {
-    await terminal.run(`echo "Hello World" > ${tmpDir}/hello.txt`);
+  test('Write and read file in temporary directory', async ({ $, tmpDir }) => {
+    await $`echo "Hello World" > ${tmpDir}/hello.txt`;
 
-    const readResult = await terminal.run(`cat ${tmpDir}/hello.txt`);
+    const readResult = await $`cat ${tmpDir}/hello.txt`;
     expect(readResult).toSucceed();
     expect(readResult).toHaveStdout('Hello World');
   });

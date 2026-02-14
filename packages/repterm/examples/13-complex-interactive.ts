@@ -8,10 +8,10 @@
  * mode with complex commands.
  */
 
-import { test, expect, describe } from 'repterm';
+import { test, expect, describe, raw } from 'repterm';
 
 describe('Complex interactive flows', () => {
-  test('multi-round input with conditional logic', async ({ terminal }) => {
+  test('multi-round input with conditional logic', async ({ $ }) => {
     const script = `bash -c '
       read -p "Enter number: " n
       if [ "$n" -gt 10 ]; then
@@ -22,7 +22,7 @@ describe('Complex interactive flows', () => {
         exit 1
       fi
     '`;
-    const proc = terminal.run(script, { interactive: true });
+    const proc = $({ interactive: true })`${raw(script)}`;
 
     await proc.expect('Enter number:');
     await proc.send('42');
@@ -33,7 +33,7 @@ describe('Complex interactive flows', () => {
     console.log(`  conditional → code=${result.code}`);
   });
 
-  test('loop-based interactive prompt', async ({ terminal }) => {
+  test('loop-based interactive prompt', async ({ $ }) => {
     const script = `bash -c '
       for i in 1 2 3; do
         read -p "Round $i: " val
@@ -41,7 +41,7 @@ describe('Complex interactive flows', () => {
       done
       echo "All done"
     '`;
-    const proc = terminal.run(script, { interactive: true });
+    const proc = $({ interactive: true })`${raw(script)}`;
 
     for (let i = 1; i <= 3; i++) {
       await proc.expect(`Round ${i}:`);
@@ -55,10 +55,10 @@ describe('Complex interactive flows', () => {
     console.log(`  3-round loop completed`);
   });
 
-  test('password-style hidden input with sendRaw', async ({ terminal }) => {
+  test('password-style hidden input with sendRaw', async ({ $ }) => {
     // Use bash read -s for silent input
     const script = `bash -c 'read -sp "Password: " pw; echo; echo "Length: \${#pw}"'`;
-    const proc = terminal.run(script, { interactive: true });
+    const proc = $({ interactive: true })`${raw(script)}`;
 
     await proc.expect('Password:');
     // sendRaw doesn't append newline, so manually add \r
@@ -69,9 +69,9 @@ describe('Complex interactive flows', () => {
     expect(result).toSucceed();
   });
 
-  test('tab-separated field processing', async ({ terminal }) => {
+  test('tab-separated field processing', async ({ $ }) => {
     const script = `bash -c 'read -p "CSV: " line; echo "$line" | tr "," "\\n" | while read field; do echo "Field: $field"; done'`;
-    const proc = terminal.run(script, { interactive: true });
+    const proc = $({ interactive: true })`${raw(script)}`;
 
     await proc.expect('CSV:');
     await proc.send('a,b,c');
@@ -84,8 +84,8 @@ describe('Complex interactive flows', () => {
 });
 
 describe('Signal handling and interrupts', () => {
-  test('interrupt a running process and verify', async ({ terminal }) => {
-    const proc = terminal.run('bash -c \'trap "echo CAUGHT; exit 42" INT; sleep 999\'', { interactive: true });
+  test('interrupt a running process and verify', async ({ $ }) => {
+    const proc = $({ interactive: true })`bash -c 'trap "echo CAUGHT; exit 42" INT; sleep 999'`;
 
     await proc.start();
     // Wait for sleep to actually start
@@ -99,8 +99,8 @@ describe('Signal handling and interrupts', () => {
     console.log(`  trap INT → code=${result.code}`);
   });
 
-  test('interrupt without trap uses default behavior', async ({ terminal }) => {
-    const proc = terminal.run('sleep 999', { interactive: true });
+  test('interrupt without trap uses default behavior', async ({ $ }) => {
+    const proc = $({ interactive: true })`sleep 999`;
     await proc.start();
     await new Promise(resolve => setTimeout(resolve, 300));
 
@@ -112,33 +112,33 @@ describe('Signal handling and interrupts', () => {
 });
 
 describe('Complex shell constructs', () => {
-  test('here-string (<<<) captures output correctly', async ({ terminal }) => {
-    const result = await terminal.run('cat <<< "hello from here-string"');
+  test('here-string (<<<) captures output correctly', async ({ $ }) => {
+    const result = await $`cat <<< "hello from here-string"`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('hello from here-string');
   });
 
-  test('process substitution', async ({ terminal }) => {
-    const result = await terminal.run('bash -c \'diff <(echo "a") <(echo "a"); echo "exit: $?"\'');
+  test('process substitution', async ({ $ }) => {
+    const result = await $`bash -c 'diff <(echo "a") <(echo "a"); echo "exit: $?"'`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('exit: 0');
   });
 
-  test('arithmetic evaluation', async ({ terminal }) => {
-    const result = await terminal.run('echo $((2 ** 10))');
+  test('arithmetic evaluation', async ({ $ }) => {
+    const result = await $`echo $((2 ** 10))`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('1024');
   });
 
-  test('variable expansion and string manipulation', async ({ terminal }) => {
-    const result = await terminal.run('bash -c \'str="hello world"; echo "${str^^}" "${#str}"\'');
+  test('variable expansion and string manipulation', async ({ $ }) => {
+    const result = await $`bash -c 'str="hello world"; echo "\${str^^}" "\${#str}"'`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('HELLO WORLD');
     expect(result).toContainInOutput('11');
   });
 
-  test('array operations in bash', async ({ terminal }) => {
-    const result = await terminal.run('arr=(one two three); echo "${arr[@]}" count="${#arr[@]}"');
+  test('array operations in bash', async ({ $ }) => {
+    const result = await $`arr=(one two three); echo "\${arr[@]}" count="\${#arr[@]}"`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('one two three');
     expect(result).toContainInOutput('count=3');
@@ -146,35 +146,35 @@ describe('Complex shell constructs', () => {
 });
 
 describe('Output volume and formatting', () => {
-  test('large output is captured correctly', async ({ terminal }) => {
-    const result = await terminal.run('seq 1 200');
+  test('large output is captured correctly', async ({ $ }) => {
+    const result = await $`seq 1 200`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('1');
     expect(result).toContainInOutput('100');
     expect(result).toContainInOutput('200');
   });
 
-  test('multi-line output with special characters', async ({ terminal }) => {
-    const result = await terminal.run('printf "line1\\tTAB\\nline2\\tTAB\\n"');
+  test('multi-line output with special characters', async ({ $ }) => {
+    const result = await $`printf "line1\\tTAB\\nline2\\tTAB\\n"`;
     expect(result).toSucceed();
     expect(result).toContainInOutput('line1');
     expect(result).toContainInOutput('line2');
   });
 
-  test('empty output with success exit code', async ({ terminal }) => {
-    const result = await terminal.run('true');
+  test('empty output with success exit code', async ({ $ }) => {
+    const result = await $`true`;
     expect(result).toSucceed();
     expect(result).toHaveExitCode(0);
   });
 
-  test('stderr only output', async ({ terminal }) => {
-    const result = await terminal.run('echo "error msg" >&2');
+  test('stderr only output', async ({ $ }) => {
+    const result = await $`echo "error msg" >&2`;
     expect(result).toSucceed();
     expect(result).toHaveStderr('error msg');
   });
 
-  test('interleaved stdout and stderr', async ({ terminal }) => {
-    const result = await terminal.run('echo "out1"; echo "err1" >&2; echo "out2"; echo "err2" >&2');
+  test('interleaved stdout and stderr', async ({ $ }) => {
+    const result = await $`echo "out1"; echo "err1" >&2; echo "out2"; echo "err2" >&2`;
     expect(result).toSucceed();
     expect(result).toHaveStdout('out1');
     expect(result).toHaveStdout('out2');
@@ -184,36 +184,36 @@ describe('Output volume and formatting', () => {
 });
 
 describe('Timing and duration', () => {
-  test('fast command has low duration', async ({ terminal }) => {
-    const result = await terminal.run('echo fast');
+  test('fast command has low duration', async ({ $ }) => {
+    const result = await $`echo fast`;
     expect(result).toSucceed();
     expect(result.duration).toBeLessThan(2000);
     console.log(`  fast command: ${result.duration}ms`);
   });
 
-  test('sleep command has measurable duration', async ({ terminal }) => {
-    const result = await terminal.run('sleep 0.2 && echo "done"');
+  test('sleep command has measurable duration', async ({ $ }) => {
+    const result = await $`sleep 0.2 && echo "done"`;
     expect(result).toSucceed();
     expect(result.duration).toBeGreaterThan(100);
     console.log(`  sleep 0.2: ${result.duration}ms`);
   });
 
-  test('command field is preserved', async ({ terminal }) => {
+  test('command field is preserved', async ({ $ }) => {
     const cmd = 'echo "test command tracking"';
-    const result = await terminal.run(cmd);
+    const result = await $`${raw(cmd)}`;
     expect(result.command).toBe(cmd);
   });
 });
 
 describe('Terminal snapshot and waitForText', () => {
-  test('snapshot captures current terminal state', async ({ terminal }) => {
-    await terminal.run('echo "snapshot-marker-12345"');
+  test('snapshot captures current terminal state', async ({ $, terminal }) => {
+    await $`echo "snapshot-marker-12345"`;
     const snap = await terminal.snapshot();
     expect(snap).toContain('snapshot-marker-12345');
   });
 
-  test('waitForText detects delayed output', async ({ terminal }) => {
-    const proc = terminal.run('sleep 0.3 && echo "delayed-output"', { interactive: true });
+  test('waitForText detects delayed output', async ({ $, terminal }) => {
+    const proc = $({ interactive: true })`sleep 0.3 && echo "delayed-output"`;
     await proc.start();
     await terminal.waitForText('delayed-output', { timeout: 5000 });
     console.log('  delayed output detected');

@@ -7,12 +7,12 @@
  * exitCode is unreliable (-1); use expect() for output assertions instead.
  */
 
-import { test, expect, describe } from 'repterm';
+import { test, expect, describe, raw } from 'repterm';
 
 describe('Interactive commands', () => {
-  test('expect — wait for specific output', async ({ terminal }) => {
+  test('expect — wait for specific output', async ({ $ }) => {
     // { interactive: true } enables expect/send
-    const proc = terminal.run('echo "step 1"; sleep 3; echo "step 2"', { interactive: true });
+    const proc = $({ interactive: true })`echo "step 1"; sleep 3; echo "step 2"`;
 
     await proc.expect('step 1');
     console.log('  Step 1 appeared');
@@ -22,9 +22,9 @@ describe('Interactive commands', () => {
     console.log('  Step 2 appeared');
   });
 
-  test('send — send input to a process', async ({ terminal }) => {
+  test('send — send input to a process', async ({ $ }) => {
     // cat reads from stdin and echoes back; use send() to provide input
-    const proc = terminal.run('cat', { interactive: true });
+    const proc = $({ interactive: true })`cat`;
 
     await proc.send('hello from repterm');
     await proc.expect('hello from repterm');
@@ -33,9 +33,9 @@ describe('Interactive commands', () => {
     await proc.interrupt();
   });
 
-  test('multi-step expect/send conversation', async ({ terminal }) => {
+  test('multi-step expect/send conversation', async ({ $ }) => {
     const script = `bash -c 'read -p "Name: " name; echo "Hello $name"; read -p "Age: " age; echo "$name is $age years old"'`;
-    const proc = terminal.run(script, { interactive: true });
+    const proc = $({ interactive: true })`${raw(script)}`;
 
     await proc.expect('Name:');
     await proc.send('Alice');
@@ -50,8 +50,8 @@ describe('Interactive commands', () => {
 });
 
 describe('Process lifecycle', () => {
-  test('interrupt — Ctrl+C to stop a long-running process', async ({ terminal }) => {
-    const proc = terminal.run('sleep 999', { interactive: true });
+  test('interrupt — Ctrl+C to stop a long-running process', async ({ $ }) => {
+    const proc = $({ interactive: true })`sleep 999`;
 
     // start() launches the command without waiting for completion
     await proc.start();
@@ -61,9 +61,9 @@ describe('Process lifecycle', () => {
     console.log('  Process interrupted');
   });
 
-  test('PTYProcess can be awaited (non-interactive)', async ({ terminal }) => {
+  test('PTYProcess can be awaited (non-interactive)', async ({ $ }) => {
     // In record mode, even non-interactive runs use PTY (exitCode is -1)
-    const result = await terminal.run('echo "done"');
+    const result = await $`echo "done"`;
     expect(result).toContainInOutput('done');
     console.log(`  Exit code: ${result.code}, duration: ${result.duration}ms`);
   });

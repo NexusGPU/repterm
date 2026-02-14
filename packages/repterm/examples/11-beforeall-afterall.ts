@@ -49,19 +49,21 @@ describe('Database Tests', () => {
   });
 
   test('database is connected', async (ctx) => {
-    const { terminal, dbConnection } = ctx as Context;
+    const $ = ctx.$!;
+    const { dbConnection } = ctx as Context;
     if (!dbConnection?.connected) {
       throw new Error('Database not connected');
     }
-    await terminal.run(`echo "Connected to ${dbConnection!.host}:${dbConnection!.port}"`);
+    await $`echo "Connected to ${dbConnection!.host}:${dbConnection!.port}"`;
   });
 
   test('database host is correct', async (ctx) => {
-    const { terminal, dbConnection } = ctx as Context;
+    const $ = ctx.$!;
+    const { dbConnection } = ctx as Context;
     if (dbConnection?.host !== 'localhost') {
       throw new Error(`Expected host to be localhost, got ${dbConnection?.host}`);
     }
-    await terminal.run(`echo "Host verified: ${dbConnection!.host}"`);
+    await $`echo "Host verified: ${dbConnection!.host}"`;
   });
 
   describe('User Operations', () => {
@@ -85,16 +87,18 @@ describe('Database Tests', () => {
     });
 
     test('can create user', async (ctx) => {
-      const { terminal, testUser, dbConnection } = ctx as Context;
+      const $ = ctx.$!;
+      const { testUser, dbConnection } = ctx as Context;
       if (testUser?.id !== 'user-123') {
         throw new Error(`Expected user id to be user-123, got ${testUser?.id}`);
       }
-      await terminal.run(`echo "Creating user ${testUser!.name} in ${dbConnection?.host}"`);
+      await $`echo "Creating user ${testUser!.name} in ${dbConnection?.host}"`;
     });
 
     test('can fetch user by id', async (ctx) => {
-      const { terminal, testUser } = ctx as Context;
-      await terminal.run(`echo "Fetching user: ${testUser?.id}"`);
+      const $ = ctx.$!;
+      const { testUser } = ctx as Context;
+      await $`echo "Fetching user: ${testUser?.id}"`;
     });
 
     describe('User Permissions', () => {
@@ -112,19 +116,21 @@ describe('Database Tests', () => {
       });
 
       test('user has read permission', async (ctx) => {
-        const { terminal, testUser, permissions } = ctx as Context;
+        const $ = ctx.$!;
+        const { testUser, permissions } = ctx as Context;
         if (!permissions?.includes('read')) {
           throw new Error('User does not have read permission');
         }
-        await terminal.run(`echo "${testUser?.name} has permissions: ${permissions?.join(', ')}"`);
+        await $`echo "${testUser?.name} has permissions: ${permissions?.join(', ')}"`;
       });
 
       test('user has write permission', async (ctx) => {
-        const { terminal, permissions } = ctx as Context;
+        const $ = ctx.$!;
+        const { permissions } = ctx as Context;
         if (!permissions?.includes('write')) {
           throw new Error('User does not have write permission');
         }
-        await terminal.run(`echo "Write permission granted"`);
+        await $`echo "Write permission granted"`;
       });
     });
   });

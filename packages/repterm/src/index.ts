@@ -29,6 +29,10 @@ export type { TestContext, TerminalAPI, WaitOptions, CommandResult, RunOptions, 
 export type { TestFunction, TestOptions, DescribeOptions } from './runner/models.js';
 export type { HookFunction, EnhancedHookFunction } from './api/hooks.js';
 
+// Dollar ($) tagged template literal
+export type { DollarFunction, RawValue } from './terminal/dollar.js';
+export { shellEscape, processTemplate, createDollarFunction, raw } from './terminal/dollar.js';
+
 // Plugin system
 export {
   definePlugin,

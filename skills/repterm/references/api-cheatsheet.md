@@ -35,21 +35,21 @@ import {
   afterAll,
 } from 'repterm';
 
-// test(name, fn)
-test('basic', async ({ terminal }) => {
-  const result = await terminal.run('echo hello');
+// test(name, fn) — use $ tagged template for commands (recommended)
+test('basic', async ({ $ }) => {
+  const result = await $`echo hello`;
   await expect(result).toSucceed();
 });
 
 // test(name, options, fn)
-test('record case', { record: true, timeout: 30_000 }, async ({ terminal }) => {
-  await terminal.run('pwd');
+test('record case', { record: true, timeout: 30_000 }, async ({ $ }) => {
+  await $`pwd`;
 });
 
 // describe(name, fn)
 describe('suite', () => {
-  test('case 1', async ({ terminal }) => {
-    await terminal.run('echo suite');
+  test('case 1', async ({ $ }) => {
+    await $`echo suite`;
   });
 });
 
@@ -61,29 +61,48 @@ describe('record suite', { record: true }, () => {
 });
 
 // test.step()
-test('step demo', async ({ terminal }) => {
+test('step demo', async ({ $ }) => {
   await test.step('prepare', async () => {
-    await terminal.run('mkdir -p /tmp/repterm-demo');
+    await $`mkdir -p /tmp/repterm-demo`;
   });
 
   await test.step('verify', async () => {
-    const result = await terminal.run('ls /tmp/repterm-demo');
+    const result = await $`ls /tmp/repterm-demo`;
     await expect(result).toSucceed();
   });
+});
+
+// Interpolation with automatic shell escaping
+test('interpolation', async ({ $ }) => {
+  const name = "hello world";
+  await $`echo ${name}`;  // becomes: echo 'hello world'
+});
+
+// terminal.run() still works for backward compatibility
+test('legacy', async ({ terminal }) => {
+  const result = await terminal.run('echo hello');
+  await expect(result).toSucceed();
 });
 ```
 
 ## Terminal API
 
 ```ts
-// Non-interactive: Bun.spawn, returns CommandResult
-const result = await terminal.run('echo hello');
+// Recommended: $ tagged template literal (auto-escapes interpolated values)
+const result = await $`echo hello`;
 console.log(result.code, result.stdout, result.stderr, result.output, result.duration);
 
-// Use silent for exact code or clean JSON in recording/PTY
-const parsed = await terminal.run('kubectl get pod x -o json', { silent: true });
+// With interpolation (values are automatically shell-escaped)
+const name = "hello world";
+await $`echo ${name}`;  // runs: echo 'hello world'
 
-// Interactive: get PTYProcess controller
+// With options
+await $({ timeout: 5000 })`echo hello`;
+
+// Use silent for exact code or clean JSON in recording/PTY
+const parsed = await $({ silent: true })`kubectl get pod x -o json`;
+
+// Interactive: use terminal.run() with interactive option, then use controller
 const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
 await proc.expect('>>>');
 await proc.send('print("hi")\n');
@@ -97,13 +116,16 @@ const snapshot = await terminal.snapshot();
 
 // Multi-terminal
 const terminal2 = await terminal.create();
-await terminal2.run('echo from second terminal');
+await terminal2.$`echo from second terminal`;
+
+// Legacy: terminal.run() still works
+const result2 = await terminal.run('echo hello');
 ```
 
 ## Assertion API
 
 ```ts
-const result = await terminal.run('command');
+const result = await $`command`;
 
 // CommandResult
 await expect(result).toSucceed();
@@ -124,8 +146,8 @@ await expect(terminal).toMatchPattern(/\$\s/);
 
 ```ts
 describe('hooks', () => {
-  beforeEach(async ({ terminal }) => {
-    await terminal.run('echo setup');
+  beforeEach(async ({ $ }) => {
+    await $`echo setup`;
   });
 
   beforeEach('tmpDir', async () => {
@@ -146,8 +168,8 @@ describe('hooks', () => {
     void shared;
   });
 
-  test('fixture requested', async ({ terminal, tmpDir, shared }) => {
-    await terminal.run(`touch ${tmpDir}/a`);
+  test('fixture requested', async ({ $, tmpDir, shared }) => {
+    await $`touch ${tmpDir}/a`;
     await expect(shared).toBe('value');
   });
 });

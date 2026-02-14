@@ -11,6 +11,7 @@ import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
 import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
 import { createShellInitFile, stripAnsiEnhanced, type ShellIntegrationMode } from './shell-integration.js';
+import { createDollarFunction, type DollarFunction } from './dollar.js';
 
 /**
  * CommandResult implementation with successful getter
@@ -85,6 +86,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private commandLogs: CommandLog[] = [];      // Commands run during test
   private pluginFactory?: PluginFactory<Record<string, unknown>>;  // Plugin factory
   public plugins?: Record<string, unknown>;  // Plugin instances (for new terminals)
+  public $: DollarFunction;  // Tagged template literal for command execution
 
   // Detected or configured prompt line count (default 0)
   private promptLineCount: number = 0;
@@ -110,6 +112,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     this.sharedState = { paneCount: 1, paneOutputs: new Map() };  // Start with 1 pane
     this.paneIndex = 0;  // Main terminal is pane 0
     this.nonInteractiveOutput = '';
+
+    // Initialize $ tagged template literal
+    this.$ = createDollarFunction((cmd, opts) => this.run(cmd, opts));
 
     // Use user promptLineCount and skip auto-detect
     if (config.promptLineCount !== undefined) {
@@ -1374,7 +1379,7 @@ class PTYProcessImpl implements PTYProcess {
    */
   async expect(text: string, options?: { timeout?: number }): Promise<void> {
     if (!this.usePtyMode()) {
-      throw new Error('expect() requires interactive mode: terminal.run(cmd, { interactive: true })');
+      throw new Error('expect() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })');
     }
     await this.startCommand();
     await this.terminal.waitForText(text, options);
@@ -1385,7 +1390,7 @@ class PTYProcessImpl implements PTYProcess {
    */
   async send(input: string): Promise<void> {
     if (!this.usePtyMode()) {
-      throw new Error('send() requires interactive mode: terminal.run(cmd, { interactive: true })');
+      throw new Error('send() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })');
     }
     await this.startCommand();
     await this.terminal.send(input + '\r');
@@ -1396,7 +1401,7 @@ class PTYProcessImpl implements PTYProcess {
    */
   async sendRaw(input: string): Promise<void> {
     if (!this.usePtyMode()) {
-      throw new Error('sendRaw() requires interactive mode: terminal.run(cmd, { interactive: true })');
+      throw new Error('sendRaw() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })');
     }
     await this.startCommand();
     await this.terminal.send(input);

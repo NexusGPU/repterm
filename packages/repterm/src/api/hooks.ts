@@ -262,19 +262,19 @@ export const hooksRegistry = new HooksRegistry();
  *     const tmpDir = await fs.mkdtemp('/tmp/test-');
  *     return { tmpDir };
  *   });
- * 
+ *
  *   afterEach('tmpDir', async ({ tmpDir }) => {
  *     if (tmpDir) await fs.rm(tmpDir, { recursive: true });
  *   });
- * 
+ *
  *   // This test triggers tmpDir
- *   test('uses tmpDir', async ({ terminal, tmpDir }) => {
- *     await terminal.run(`ls ${tmpDir}`);
+ *   test('uses tmpDir', async ({ $, tmpDir }) => {
+ *     await $`ls ${tmpDir}`;
  *   });
- * 
+ *
  *   // This test does not trigger tmpDir
- *   test('no fixture needed', async ({ terminal }) => {
- *     await terminal.run('echo hello');
+ *   test('no fixture needed', async ({ $ }) => {
+ *     await $`echo hello`;
  *   });
  * });
  */
