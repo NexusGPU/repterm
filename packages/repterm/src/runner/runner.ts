@@ -168,6 +168,7 @@ export async function runTest(
   // Build initial test context with inherited context from beforeAll hooks
   let context: TestContext = {
     terminal,
+    $: terminal.$,
     ...inheritedContext,
     ...testCase.fixtures,
   };

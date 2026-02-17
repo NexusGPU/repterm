@@ -8,14 +8,14 @@
 import { test, expect, describe } from 'repterm';
 
 describe('basic', () => {
-  test('success command', async ({ terminal }) => {
-    const result = await terminal.run('echo "Hello"');
+  test('success command', async ({ $ }) => {
+    const result = await $`echo "Hello"`;
     await expect(result).toSucceed();
     await expect(result).toContainInOutput('Hello');
   });
 
-  test('failure command', async ({ terminal }) => {
-    const result = await terminal.run('cat /definitely-not-exists');
+  test('failure command', async ({ $ }) => {
+    const result = await $`cat /definitely-not-exists`;
     await expect(result).toFail();
     await expect(result).toHaveStderr('No such file');
   });
@@ -31,15 +31,15 @@ import { test, describe } from 'repterm';
 // - CLI without --record: PTY-only (no cast)
 // - CLI with --record: full recording (asciinema + tmux)
 describe('recordable suite', { record: true }, () => {
-  test('demo', async ({ terminal }) => {
-    await terminal.run('ls -la');
+  test('demo', async ({ $ }) => {
+    await $`ls -la`;
     await terminal.waitForText('total');
   });
 });
 
 // Single test marker
-test('single record case', { record: true }, async ({ terminal }) => {
-  await terminal.run('pwd');
+test('single record case', { record: true }, async ({ $ }) => {
+  await $`pwd`;
 });
 ```
 
@@ -50,6 +50,18 @@ import { test } from 'repterm';
 
 test('interactive python', async ({ terminal }) => {
   const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
+
+  await proc.expect('>>>');
+  await proc.send('print("hi")\n');
+  await proc.expect('hi');
+
+  await proc.send('exit()\n');
+  await proc.wait();
+});
+
+// Alternative: use $({ interactive: true })
+test('interactive with $', async ({ $ }) => {
+  const proc = $({ interactive: true, timeout: 30_000 })`python3`;
 
   await proc.expect('>>>');
   await proc.send('print("hi")\n');
@@ -82,9 +94,9 @@ describe('fixtures', () => {
     await Bun.$`rm -rf ${rootDir}`;
   });
 
-  test('uses fixture', async ({ terminal, tmpDir }) => {
-    await terminal.run(`touch ${tmpDir}/a.txt`);
-    const result = await terminal.run(`ls ${tmpDir}`);
+  test('uses fixture', async ({ $, tmpDir }) => {
+    await $`touch ${tmpDir}/a.txt`;
+    const result = await $`ls ${tmpDir}`;
     await expect(result).toContainInOutput('a.txt');
   });
 });
@@ -96,11 +108,11 @@ describe('fixtures', () => {
 import { test, expect, describe } from 'repterm';
 
 describe('multi terminal', { record: true }, () => {
-  test('share file', async ({ terminal }) => {
+  test('share file', async ({ $ }) => {
     const terminal2 = await terminal.create();
 
-    await terminal.run('echo message > /tmp/shared.txt');
-    const result = await terminal2.run('cat /tmp/shared.txt');
+    await $`echo message > /tmp/shared.txt`;
+    const result = await terminal2.$`cat /tmp/shared.txt`;
 
     await expect(result).toContainInOutput('message');
   });
@@ -163,8 +175,8 @@ test('deployment ready', async (ctx) => {
 ```ts
 import { test } from 'repterm';
 
-test('debug command', async ({ terminal }) => {
-  const result = await terminal.run('complex-command');
+test('debug command', async ({ $ }) => {
+  const result = await $`complex-command`;
 
   console.log('code:', result.code);
   console.log('stdout:', result.stdout);

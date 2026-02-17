@@ -18,33 +18,33 @@
  *   Layer 3: Timeout           — silent fallback for edge cases
  */
 
-import { test, expect, describe } from 'repterm';
+import { test, expect, describe, raw } from 'repterm';
 
 describe('Exit code accuracy (non-recording)', () => {
-  test('successful command returns exit code 0', async ({ terminal }) => {
-    const result = await terminal.run('echo "hello"');
+  test('successful command returns exit code 0', async ({ $ }) => {
+    const result = await $`echo "hello"`;
     expect(result).toSucceed();
     expect(result).toHaveExitCode(0);
     console.log(`  exit code: ${result.code}`);
   });
 
-  test('failed command returns correct non-zero exit code', async ({ terminal }) => {
-    const result = await terminal.run('exit 42');
+  test('failed command returns correct non-zero exit code', async ({ $ }) => {
+    const result = await $`exit 42`;
     expect(result).toFail();
     expect(result).toHaveExitCode(42);
     console.log(`  exit code: ${result.code}`);
   });
 
-  test('false returns exit code 1', async ({ terminal }) => {
-    const result = await terminal.run('false');
+  test('false returns exit code 1', async ({ $ }) => {
+    const result = await $`false`;
     expect(result).toFail();
     expect(result).toHaveExitCode(1);
     console.log(`  exit code: ${result.code}`);
   });
 
-  test('distinguish success from failure', async ({ terminal }) => {
-    const ok = await terminal.run('true');
-    const fail = await terminal.run('ls /nonexistent-path-xyz 2>/dev/null; exit 2');
+  test('distinguish success from failure', async ({ $ }) => {
+    const ok = await $`true`;
+    const fail = await $`ls /nonexistent-path-xyz 2>/dev/null; exit 2`;
 
     expect(ok).toSucceed();
     expect(fail).toFail();
@@ -55,10 +55,10 @@ describe('Exit code accuracy (non-recording)', () => {
 });
 
 describe('Exit code in PTY / interactive mode', () => {
-  test('interactive command captures exit code via OSC 133', async ({ terminal }) => {
+  test('interactive command captures exit code via OSC 133', async ({ $ }) => {
     // Previously, interactive mode always returned code = -1
     // With OSC 133, we get the real exit code
-    const proc = terminal.run('bash -c "echo done; exit 3"', { interactive: true });
+    const proc = $({ interactive: true })`bash -c "echo done; exit 3"`;
     await proc.expect('done');
     const result = await proc;
 
@@ -67,9 +67,9 @@ describe('Exit code in PTY / interactive mode', () => {
     expect(result).toContainInOutput('done');
   });
 
-  test('multi-step interactive with correct final exit code', async ({ terminal }) => {
+  test('multi-step interactive with correct final exit code', async ({ $ }) => {
     const script = `bash -c 'read -p "Input: " val; echo "Got: $val"; exit 0'`;
-    const proc = terminal.run(script, { interactive: true });
+    const proc = $({ interactive: true })`${raw(script)}`;
 
     await proc.expect('Input:');
     await proc.send('hello');
@@ -82,8 +82,8 @@ describe('Exit code in PTY / interactive mode', () => {
 });
 
 describe('Output capture with shell integration', () => {
-  test('stdout and stderr separation', async ({ terminal }) => {
-    const result = await terminal.run('echo "out"; echo "err" >&2');
+  test('stdout and stderr separation', async ({ $ }) => {
+    const result = await $`echo "out"; echo "err" >&2`;
     expect(result).toSucceed();
     expect(result).toHaveStdout('out');
     expect(result).toHaveStderr('err');
@@ -91,16 +91,16 @@ describe('Output capture with shell integration', () => {
     expect(result).toContainInOutput('err');
   });
 
-  test('multi-line output captured correctly', async ({ terminal }) => {
-    const result = await terminal.run('for i in 1 2 3; do echo "line $i"; done');
+  test('multi-line output captured correctly', async ({ $ }) => {
+    const result = await $`for i in 1 2 3; do echo "line $i"; done`;
     expect(result).toSucceed();
     expect(result).toHaveStdout('line 1');
     expect(result).toHaveStdout('line 2');
     expect(result).toHaveStdout('line 3');
   });
 
-  test('command duration is tracked', async ({ terminal }) => {
-    const result = await terminal.run('sleep 0.1 && echo "done"');
+  test('command duration is tracked', async ({ $ }) => {
+    const result = await $`sleep 0.1 && echo "done"`;
     expect(result).toSucceed();
     console.log(`  duration: ${result.duration}ms`);
     expect(result.duration).toBeGreaterThan(50);
@@ -109,31 +109,31 @@ describe('Output capture with shell integration', () => {
 });
 
 describe('Prompt detection: promptDetection option', () => {
-  test('promptDetection "none" skips prompt wait (for long-running commands)', async ({ terminal }) => {
+  test('promptDetection "none" skips prompt wait (for long-running commands)', async ({ $ }) => {
     // Use promptDetection: 'none' when you know the command will take long
     // and you don't want to wait for prompt detection
-    const result = await terminal.run('echo "quick"', { promptDetection: 'none' });
+    const result = await $({ promptDetection: 'none' })`echo "quick"`;
     expect(result).toContainInOutput('quick');
   });
 });
 
 // Recording mode example — shows that OSC 133 injection is invisible
 describe('Recording with shell integration', { record: true }, () => {
-  test('commands record cleanly — no injection artifacts', async ({ terminal }) => {
+  test('commands record cleanly — no injection artifacts', async ({ $, terminal }) => {
     // OSC 133 markers are terminal control sequences (like color codes)
     // They are parsed but NOT displayed, so recordings are clean
-    await terminal.run('echo "Recording with OSC 133 — no visible injection"');
+    await $`echo "Recording with OSC 133 — no visible injection"`;
     await expect(terminal).toContainText('no visible injection');
   });
 
-  test('exit code 0 in recording mode', async ({ terminal }) => {
-    const result = await terminal.run('echo "recorded"');
+  test('exit code 0 in recording mode', async ({ $, terminal }) => {
+    const result = await $`echo "recorded"`;
     await expect(terminal).toContainText('recorded');
     console.log(`  recording exit code: ${result.code}`);
   });
 
-  test('non-zero exit code in recording mode', async ({ terminal }) => {
-    const result = await terminal.run('false');
+  test('non-zero exit code in recording mode', async ({ $ }) => {
+    const result = await $`false`;
     console.log(`  recording false exit code: ${result.code}`);
   });
 });

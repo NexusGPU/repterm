@@ -28,6 +28,7 @@ graph TB
 
     subgraph Terminal["Terminal"]
         TerminalImpl["terminal/terminal.ts"]
+        DollarFn["terminal/dollar.ts"]
         Session["terminal/session.ts"]
         Recorder["recording/recorder.ts"]
     end
@@ -44,6 +45,7 @@ graph TB
     RunnerCore --> Reporter
     TestAPI -.-> RunnerCore
     Plugin -.-> TestAPI
+    TerminalImpl --> DollarFn
     TerminalImpl --> Session
     TerminalImpl --> Recorder
 ```
@@ -87,7 +89,7 @@ In runTest() (runner/runner.ts):
 - `shouldRecord = cliRecordMode && testRecordConfig`
 - `shouldUsePtyOnly = testRecordConfig && !cliRecordMode`
 
-terminal.run() paths:
+terminal.$\`cmd\` / terminal.run() paths:
 
 | Scenario | Execution | Result |
 | --- | --- | --- |

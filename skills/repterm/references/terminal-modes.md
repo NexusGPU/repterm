@@ -4,12 +4,12 @@
 
 | Mode | Trigger | Execution | Notes |
 | --- | --- | --- | --- |
-| Spawn (default) | `terminal.run()` non-interactive, non-PTY | `Bun.spawn` | exact `code`, separate stdout/stderr |
+| Spawn (default) | `$\`cmd\`` or `terminal.run()` non-interactive, non-PTY | `Bun.spawn` | exact `code`, separate stdout/stderr |
 | PTY-only | Test has `{ record: true }`, CLI no `--record` | PTY | no `.cast`, `code` often -1 |
 | Recording | CLI `--record` + test `{ record: true }` | asciinema + tmux + PTY | produces `.cast`, typing and pane |
 | Interactive | `terminal.run(cmd, { interactive: true })` | PTY | expect/send/sendRaw/interrupt |
 
-Note: `silent: true` forces `Bun.spawn` even in PTY/recording.
+Note: `silent: true` forces `Bun.spawn` even in PTY/recording: `$({ silent: true })\`cmd\``.
 
 ## 2. `--record` filter behavior
 
@@ -25,7 +25,7 @@ From `packages/repterm/src/runner/filter.ts`:
 - Fields: code/stdout/stderr/output/duration/command/successful.
 - Spawn: assert `code` directly.
 - PTY/Recording/Interactive: `code` often -1; assert output instead.
-- For reliable exit code or clean JSON: `terminal.run(cmd, { silent: true })`.
+- For reliable exit code or clean JSON: `$({ silent: true })\`cmd\`` or `terminal.run(cmd, { silent: true })`.
 
 ## 4. Multi-terminal and panes
 
@@ -42,13 +42,13 @@ From `packages/repterm/src/runner/filter.ts`:
 ## 6. Debug tips
 
 ```ts
-const result = await terminal.run('some command');
+const result = await $`some command`;
 console.log(result.code, result.stdout, result.stderr);
 
 await terminal.waitForText('ready', { timeout: 10_000, stripAnsi: true });
 console.log(await terminal.snapshot());
 
-const json = await terminal.run('kubectl get pod x -o json', { silent: true });
+const json = await $({ silent: true })`kubectl get pod x -o json`;
 console.log(json.stdout);
 ```
 

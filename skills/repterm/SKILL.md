@@ -24,9 +24,11 @@ description: >-
 1. --record filter:
    - Without --record: run all tests (including { record: true }).
    - With --record: only { record: true } tests.
-2. terminal.run() returns PTYProcess (PromiseLike); await for CommandResult.
-3. CommandResult: code/stdout/stderr/output/duration/command/successful.
-4. In recording/interactive PTY, exit code often -1; assert output.
+2. `$\`cmd\`` is the recommended way to run commands (auto-escapes interpolated values).
+   `terminal.run()` still works for backward compatibility.
+3. Both `$` and `terminal.run()` return PTYProcess (PromiseLike); await for CommandResult.
+4. CommandResult: code/stdout/stderr/output/duration/command/successful.
+5. In recording/interactive PTY, exit code often -1; assert output.
 
 ## Code navigation
 

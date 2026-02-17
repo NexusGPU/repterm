@@ -2,6 +2,8 @@
  * Core entities for the test framework
  */
 
+import type { DollarFunction } from '../terminal/dollar.js';
+
 /**
  * Configuration options for test() function
  */
@@ -70,6 +72,8 @@ export type TestFunction = (context: TestContext) => Promise<void>;
 
 export interface TestContext {
   terminal: TerminalAPI;
+  /** Tagged template literal bound to terminal.$ for convenient command execution */
+  $?: DollarFunction;
   [key: string]: unknown; // Additional fixtures
 }
 
@@ -214,10 +218,24 @@ export interface TerminalAPI {
    *   `await proc.send(':q');`
    *   `const result = await proc;`
    *
+   * Prefer $ tagged template for new code:
+   *   `const result = await $\`echo hello\`;`
+   *   `const proc = $({ interactive: true })\`vim file.txt\`;`
+   *
    * @param command - Command to execute
    * @param options - Optional configuration
    */
   run(command: string, options?: RunOptions): PTYProcess;
+
+  /**
+   * Tagged template literal for command execution with automatic shell escaping.
+   *
+   * Usage:
+   * - As tagged template: `await terminal.$\`echo ${name}\``
+   * - With options: `await terminal.$({ timeout: 5000 })\`echo hello\``
+   * - Via test context: `await $\`echo ${name}\``
+   */
+  $?: DollarFunction;
 
   /** Send input to terminal */
   send(text: string): Promise<void>;
