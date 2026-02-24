@@ -6,6 +6,7 @@
  */
 
 import type { TestContext } from '../runner/models.js';
+import type { DollarFunction } from '../terminal/dollar.js';
 import {
   definePlugin as definePluginFromApi,
   type BasePluginContext as BasePluginContextGeneric,
@@ -42,6 +43,7 @@ type AccumulateContext<TPlugins extends readonly AnyPlugin[]> =
 // ============== Augmented Test Context ==============
 
 export type AugmentedTestContext<TPlugins extends readonly AnyPlugin[]> = TestContext & {
+  $: DollarFunction;
   plugins: MergePluginMethods<TPlugins>;
 } & AccumulateContext<TPlugins>;
 

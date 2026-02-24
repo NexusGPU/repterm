@@ -148,9 +148,8 @@ describe('Advanced Features API', () => {
     await kubectl.cp('file-pod:/tmp/test.txt', '/tmp/k8s-test.txt');
   });
 
-  test('cp - 从本地复制文件到 Pod', async (ctx) => {
-    const { kubectl } = ctx.plugins;
-    const $ = ctx.$!;
+  test('cp - 从本地复制文件到 Pod', async ({ $, plugins }) => {
+    const { kubectl } = plugins;
 
     // 创建本地文件
     await $`echo "uploaded content" > /tmp/upload.txt`;
@@ -163,9 +162,8 @@ describe('Advanced Features API', () => {
   });
 
   // Cleanup
-  test('Cleanup: Delete test resources', async (ctx) => {
-    const { kubectl } = ctx.plugins;
-    const $ = ctx.$!;
+  test('Cleanup: Delete test resources', async ({ $, plugins }) => {
+    const { kubectl } = plugins;
 
     await kubectl.delete('deployment', 'webapp', { force: true });
     await kubectl.delete('service', 'webapp-svc', { force: true });
@@ -173,6 +171,5 @@ describe('Advanced Features API', () => {
 
     // Cleanup local temporary files
     await $`rm -f /tmp/k8s-test.txt /tmp/upload.txt`;
-
   });
 });

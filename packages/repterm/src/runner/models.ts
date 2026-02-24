@@ -73,7 +73,7 @@ export type TestFunction = (context: TestContext) => Promise<void>;
 export interface TestContext {
   terminal: TerminalAPI;
   /** Tagged template literal bound to terminal.$ for convenient command execution */
-  $?: DollarFunction;
+  $: DollarFunction;
   [key: string]: unknown; // Additional fixtures
 }
 
@@ -235,7 +235,7 @@ export interface TerminalAPI {
    * - With options: `await terminal.$({ timeout: 5000 })\`echo hello\``
    * - Via test context: `await $\`echo ${name}\``
    */
-  $?: DollarFunction;
+  $: DollarFunction;
 
   /** Send input to terminal */
   send(text: string): Promise<void>;

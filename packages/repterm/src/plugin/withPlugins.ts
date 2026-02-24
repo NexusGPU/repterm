@@ -51,32 +51,34 @@ export function createTestWithPlugins<TPlugins extends readonly AnyPlugin[]>(
         name: string,
         fn: PluginTestFunction<TPlugins>
     ): void {
-        baseTest(name, async ({ terminal }) => {
+        baseTest(name, async (baseCtx) => {
+            const { terminal } = baseCtx;
+
             // Create plugin factory for new terminals
             const pluginFactory = (newTerminal: typeof terminal) => {
                 // Initialize plugins with new terminal context
-                const newCtx = config.initialize({ terminal: newTerminal });
+                const newCtx = config.initialize({ terminal: newTerminal, $: newTerminal.$ });
                 return newCtx.plugins;
             };
 
             // Inject plugin factory into terminal
             terminal.setPluginFactory?.(pluginFactory);
 
-            // Initialize plugins with test context
-            const augmentedCtx = config.initialize({ terminal });
+            // Initialize plugins with full test context (including $)
+            const augmentedCtx = config.initialize(baseCtx);
 
             // Run beforeTest hooks
-            await config.runBeforeTestHooks({ terminal });
+            await config.runBeforeTestHooks(baseCtx);
 
             try {
                 // Execute the test with augmented context
                 await fn(augmentedCtx);
 
                 // Run afterTest hooks (success)
-                await config.runAfterTestHooks({ terminal });
+                await config.runAfterTestHooks(baseCtx);
             } catch (error) {
                 // Run afterTest hooks (failure)
-                await config.runAfterTestHooks({ terminal }, error as Error);
+                await config.runAfterTestHooks(baseCtx, error as Error);
                 throw error;
             }
         });
