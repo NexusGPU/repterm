@@ -1,12 +1,11 @@
 # Common code patterns
 
+> All examples assume: `import { test, describe, expect, beforeEach, afterEach, beforeAll, afterAll } from 'repterm';`
 > Templates match current API; copy and adjust.
 
 ## 1. Basic test
 
 ```ts
-import { test, expect, describe } from 'repterm';
-
 describe('basic', () => {
   test('success command', async ({ $ }) => {
     const result = await $`echo "Hello"`;
@@ -25,8 +24,6 @@ describe('basic', () => {
 ## 2. Recording and PTY-only
 
 ```ts
-import { test, describe } from 'repterm';
-
 // Whole suite record: true
 // - CLI without --record: PTY-only (no cast)
 // - CLI with --record: full recording (asciinema + tmux)
@@ -46,8 +43,6 @@ test('single record case', { record: true }, async ({ $ }) => {
 ## 3. Interactive commands
 
 ```ts
-import { test } from 'repterm';
-
 test('interactive python', async ({ terminal }) => {
   const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
 
@@ -75,8 +70,6 @@ test('interactive with $', async ({ $ }) => {
 ## 4. Hooks + lazy fixtures
 
 ```ts
-import { test, describe, beforeEach, afterEach, beforeAll, afterAll, expect } from 'repterm';
-
 describe('fixtures', () => {
   beforeAll(async () => ({ rootDir: '/tmp/repterm-suite' }));
 
@@ -105,8 +98,6 @@ describe('fixtures', () => {
 ## 5. Multi-terminal
 
 ```ts
-import { test, expect, describe } from 'repterm';
-
 describe('multi terminal', { record: true }, () => {
   test('share file', async ({ $ }) => {
     const terminal2 = await terminal.create();
@@ -122,7 +113,7 @@ describe('multi terminal', { record: true }, () => {
 ## 6. Plugin setup (defineConfig)
 
 ```ts
-import { defineConfig, definePlugin, createTestWithPlugins, expect } from 'repterm';
+import { defineConfig, definePlugin, createTestWithPlugins } from 'repterm';
 
 const tracePlugin = definePlugin('trace', () => ({
   methods: {
@@ -146,7 +137,7 @@ test('plugin test', async (ctx) => {
 ## 7. Kubectl plugin
 
 ```ts
-import { defineConfig, createTestWithPlugins, expect } from 'repterm';
+import { defineConfig, createTestWithPlugins } from 'repterm';
 import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
 
 const config = defineConfig({
@@ -170,25 +161,11 @@ test('deployment ready', async (ctx) => {
 });
 ```
 
-## 8. Debug output
+## 8. Quick example runs
 
-```ts
-import { test } from 'repterm';
-
-test('debug command', async ({ $ }) => {
-  const result = await $`complex-command`;
-
-  console.log('code:', result.code);
-  console.log('stdout:', result.stdout);
-  console.log('stderr:', result.stderr);
-
-  const snapshot = await terminal.snapshot();
-  console.log('snapshot:', snapshot);
-});
+```bash
+bun run repterm packages/repterm/examples/01-basic-commands.ts         # basic
+bun run repterm packages/repterm/examples/03-interactive-commands.ts   # interactive
+bun run repterm --record packages/repterm/examples/08-recording-demos.ts  # recording
+bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts     # kubectl (no cluster)
 ```
-
-## See Also
-
-- [api-cheatsheet.md](api-cheatsheet.md)
-- [terminal-modes.md](terminal-modes.md)
-- [troubleshooting.md](troubleshooting.md)

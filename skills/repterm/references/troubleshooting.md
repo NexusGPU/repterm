@@ -61,9 +61,3 @@ bun test packages/repterm/tests/unit
 bun run repterm packages/repterm/examples/01-basic-commands.ts
 bun run repterm --record packages/repterm/examples/08-recording-demos.ts
 ```
-
-## See Also
-
-- [terminal-modes.md](terminal-modes.md)
-- [runner-pipeline.md](runner-pipeline.md)
-- [api-cheatsheet.md](api-cheatsheet.md)

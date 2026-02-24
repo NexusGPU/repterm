@@ -4,8 +4,8 @@
 
 See `packages/repterm/src/cli/index.ts`:
 
-1. Parse args, load config (record/workers/timeout/prompt-lines).
-2. discoverTests(paths) finds test files.
+1. Parse args, load config (record/workers/timeout/verbose/prompt-lines/slow-threshold/recording-dir).
+2. discoverTests(paths) finds test files (`.ts`/`.js`). `setup.ts`/`setup.js` in a directory is auto-loaded before that directory's tests.
 3. loadTestFiles(files) registers and gets registry.getRootSuites().
 4. filterSuites(allSuites, recordEnabled) filters.
 5. By workers:
@@ -59,12 +59,25 @@ See scheduler.ts / worker.ts / worker-runner.ts:
 ## 5. Reporter and artifacts
 
 - Reporter: `packages/repterm/src/cli/reporter.ts`
+  - Options: `{ verbose?: boolean, colors?: boolean (default true), slowThreshold?: number (default 50ms) }`
   - onTestStart prints suite hierarchy.
-  - onTestResult prints pass/fail.
-  - onRunComplete prints summary and failures.
+  - onTestResult prints pass/fail (shows duration if > slowThreshold).
+  - onRunComplete prints summary and failures (stack traces only if verbose).
 - Artifact: `packages/repterm/src/runner/artifacts.ts`
+  - ArtifactManager with baseDir (default /tmp/repterm), runId (timestamp-random).
   - Provides .cast path for recording tests.
   - recordingPath is passed to Reporter.
+
+## 6. Config defaults
+
+```
+timeouts.suiteMs: 1500000  (15 min)
+timeouts.testMs:  300000   (5 min)
+RunOptions.timeout: 30000  (30 sec per command)
+parallel.workers: 1
+typingSpeed: 80            (ms/char in recording)
+recording-dir: /tmp/repterm
+```
 
 ## 6. Key checks
 
@@ -72,9 +85,3 @@ See scheduler.ts / worker.ts / worker-runner.ts:
 2. Fixture not run: check test params request that fixture.
 3. Parallel serialization: avoid non-cloneable objects in suite.
 4. No recording file: ensure shouldRecord (CLI and test both true).
-
-## See Also
-
-- [terminal-modes.md](terminal-modes.md)
-- [troubleshooting.md](troubleshooting.md)
-- [testing-matrix.md](testing-matrix.md)

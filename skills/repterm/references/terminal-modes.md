@@ -39,20 +39,31 @@ From `packages/repterm/src/runner/filter.ts`:
 - Default 0: auto-detect prompt lines.
 - Recording capture depends on prompt lines; set manually if needed.
 
-## 6. Debug tips
+## 6. Shell integration (OSC 133)
 
-```ts
-const result = await $`some command`;
-console.log(result.code, result.stdout, result.stderr);
+Source: `packages/repterm/src/terminal/shell-integration.ts`
 
-await terminal.waitForText('ready', { timeout: 10_000, stripAnsi: true });
-console.log(await terminal.snapshot());
+Three-layer prompt detection (auto-selected, best available wins):
 
-const json = await $({ silent: true })`kubectl get pod x -o json`;
-console.log(json.stdout);
-```
+| Layer | Method | Precision | Exit code | Fallback |
+| --- | --- | --- | --- | --- |
+| 1 | OSC 133 (FinalTerm standard) | Exact semantic markers (A/B/C/D) | Captured from D marker | — |
+| 2 | Sentinel unique marker | Unique string impossible in output | Via sentinel parsing | If OSC 133 not detected |
+| 3 | Enhanced regex | Pattern-based prompt matching | Not available | If sentinel fails |
 
-## See Also
+**Per-command override** via RunOptions.promptDetection:
+- `'auto'` (default): best available layer
+- `'osc133'`: force OSC 133 only
+- `'sentinel'`: force sentinel marker
+- `'regex'`: force regex matching
+- `'none'`: skip prompt detection (for long-running or streaming commands)
 
-- [runner-pipeline.md](runner-pipeline.md)
-- [troubleshooting.md](troubleshooting.md)
+**TerminalConfig.shellIntegration:**
+- `enabled` (default: true): inject shell integration markers
+- `sentinelFallback` (default: true): enable sentinel layer if OSC 133 not available
+- `shell`: custom shell path override
+
+**Supported shells:** Bash (PROMPT_COMMAND + DEBUG trap), Zsh (precmd_functions + preexec_functions). Other shells fall back to regex detection.
+
+**Tmux passthrough:** OSC 133 markers are forwarded through DCS passthrough in recording mode (`set-option allow-passthrough on`).
+

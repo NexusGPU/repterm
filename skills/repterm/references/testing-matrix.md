@@ -37,35 +37,9 @@
 | 🟢 P2 | `timing.test.ts` | timer/sleep/formatDuration |
 | 🟢 P2 | `output-capture-formula.test.ts` | recording output capture formula |
 
-## 3. Minimal regression sets
+## 3. Regression strategy
 
-### 3.1 Terminal and recording
-
-```bash
-bun test packages/repterm/tests/unit/terminal.test.ts \
-         packages/repterm/tests/unit/session.test.ts \
-         packages/repterm/tests/unit/recorder.test.ts \
-         packages/repterm/tests/unit/output-capture-formula.test.ts
-```
-
-### 3.2 Runner / CLI / Hooks
-
-```bash
-bun test packages/repterm/tests/unit/runner-lifecycle.test.ts \
-         packages/repterm/tests/unit/hooks.test.ts \
-         packages/repterm/tests/unit/loader.test.ts \
-         packages/repterm/tests/unit/reporter.test.ts \
-         packages/repterm/tests/unit/artifacts.test.ts
-```
-
-### 3.3 DSL / Assertions / Exports
-
-```bash
-bun test packages/repterm/tests/unit/expect.test.ts \
-         packages/repterm/tests/unit/describe.test.ts \
-         packages/repterm/tests/unit/steps.test.ts \
-         packages/repterm/tests/unit/index.test.ts
-```
+Run P0 files first, then P1 for the affected module, then full `bun test packages/repterm/tests/unit` for complete regression. Select specific files from the matrix above based on the module you changed.
 
 ## 4. Full regression
 
@@ -78,8 +52,3 @@ If you changed plugin-kubectl docs or types, run plugin example smoke:
 ```bash
 bun run repterm packages/plugin-kubectl/examples/00-simple-demo.ts
 ```
-
-## See Also
-
-- [runner-pipeline.md](runner-pipeline.md)
-- [troubleshooting.md](troubleshooting.md)

@@ -1,5 +1,6 @@
 # API cheatsheet
 
+> All examples assume: `import { test, describe, expect, beforeEach, afterEach, beforeAll, afterAll } from 'repterm';`
 > Verify: `bun test packages/repterm/tests/unit`
 > Run example: `bun run repterm packages/repterm/examples/<file>.ts`
 
@@ -25,23 +26,13 @@ Notes:
 ## Test DSL
 
 ```ts
-import {
-  test,
-  describe,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-} from 'repterm';
-
 // test(name, fn) — use $ tagged template for commands (recommended)
 test('basic', async ({ $ }) => {
   const result = await $`echo hello`;
   await expect(result).toSucceed();
 });
 
-// test(name, options, fn)
+// test(name, options, fn)  — options: { record?: boolean, timeout?: number }
 test('record case', { record: true, timeout: 30_000 }, async ({ $ }) => {
   await $`pwd`;
 });
@@ -53,73 +44,95 @@ describe('suite', () => {
   });
 });
 
-// describe(name, options, fn)
+// describe(name, options, fn)  — options: { record?: boolean }
 describe('record suite', { record: true }, () => {
   test('case 2', async ({ terminal }) => {
     await terminal.waitForText('ready', { timeout: 5000 });
   });
 });
 
-// test.step()
+// test.step(name, fn)  — or test.step(name, options, fn)
 test('step demo', async ({ $ }) => {
   await test.step('prepare', async () => {
     await $`mkdir -p /tmp/repterm-demo`;
   });
 
-  await test.step('verify', async () => {
+  // StepRecordingOptions: { typingSpeed?, pauseAfter?, pauseBefore?, showStepTitle? }
+  await test.step('verify', { showStepTitle: true, pauseAfter: 1000 }, async () => {
     const result = await $`ls /tmp/repterm-demo`;
     await expect(result).toSucceed();
   });
-});
-
-// Interpolation with automatic shell escaping
-test('interpolation', async ({ $ }) => {
-  const name = "hello world";
-  await $`echo ${name}`;  // becomes: echo 'hello world'
-});
-
-// terminal.run() still works for backward compatibility
-test('legacy', async ({ terminal }) => {
-  const result = await terminal.run('echo hello');
-  await expect(result).toSucceed();
 });
 ```
 
 ## Terminal API
 
+### RunOptions (all fields)
+
 ```ts
-// Recommended: $ tagged template literal (auto-escapes interpolated values)
+interface RunOptions {
+  timeout?: number;        // Command timeout ms (default: 30000)
+  env?: Record<string, string>;  // Environment variables
+  cwd?: string;            // Working directory
+  interactive?: boolean;   // PTY mode with expect/send control
+  silent?: boolean;        // Force Bun.spawn even in recording (for JSON/exit code)
+  typingSpeed?: number;    // Recording: ms per character (default: 80, 0 = instant)
+  pauseAfter?: number;     // Recording: pause after command (ms)
+  pauseBefore?: number;    // Recording: pause before command (ms)
+  promptDetection?: 'auto' | 'osc133' | 'sentinel' | 'regex' | 'none';
+    // 'auto' (default): best available; 'none': skip (for long-running commands)
+}
+```
+
+### $ tagged template
+
+```ts
+// Basic usage (auto-escapes interpolated values)
 const result = await $`echo hello`;
 console.log(result.code, result.stdout, result.stderr, result.output, result.duration);
 
-// With interpolation (values are automatically shell-escaped)
+// Interpolation: values are shell-escaped
 const name = "hello world";
 await $`echo ${name}`;  // runs: echo 'hello world'
 
+// Skip escaping with raw()
+import { raw } from 'repterm';
+await $`echo ${raw('already-safe')}`;
+
 // With options
 await $({ timeout: 5000 })`echo hello`;
+await $({ silent: true })`kubectl get pod x -o json`;
+await $({ promptDetection: 'none' })`tail -f /var/log/syslog`;
+```
 
-// Use silent for exact code or clean JSON in recording/PTY
-const parsed = await $({ silent: true })`kubectl get pod x -o json`;
+### PTYProcess (returned by $ and terminal.run())
 
-// Interactive: use terminal.run() with interactive option, then use controller
-const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
-await proc.expect('>>>');
-await proc.send('print("hi")\n');
-await proc.expect('hi');
-await proc.interrupt();
-const finalResult = await proc.wait();
+```ts
+// Await for CommandResult
+const result = await $`echo hello`;
 
-// waitForText / snapshot
-await terminal.waitForText('done', { timeout: 8000, stripAnsi: true });
-const snapshot = await terminal.snapshot();
+// Or use as controller for interactive commands
+const proc = $({ interactive: true, timeout: 30_000 })`python3`;
+await proc.expect('>>>');          // Wait for text
+await proc.send('print("hi")\n'); // Send input (appends newline)
+await proc.sendRaw('data');        // Send raw input (no newline)
+await proc.start();                // Start without waiting for finish
+await proc.interrupt();            // Send Ctrl+C
+const result = await proc.wait();  // Wait for completion
+```
 
-// Multi-terminal
-const terminal2 = await terminal.create();
-await terminal2.$`echo from second terminal`;
+### Terminal methods
 
-// Legacy: terminal.run() still works
-const result2 = await terminal.run('echo hello');
+```ts
+terminal.run(command, options?)    // Execute command, returns PTYProcess
+terminal.$`cmd`                    // Tagged template bound to terminal
+terminal.send(text)                // Send input to terminal
+terminal.waitForText(text, { timeout?, stripAnsi? })  // Wait for text
+terminal.snapshot()                // Get current output
+terminal.create()                  // Create new terminal (splits pane in recording)
+terminal.close()                   // Close terminal
+terminal.isRecording()             // Check recording mode
+terminal.isPtyMode()               // Check PTY mode (recording or ptyOnly)
 ```
 
 ## Assertion API
@@ -144,12 +157,15 @@ await expect(terminal).toMatchPattern(/\$\s/);
 
 ## Hooks
 
+Named beforeEach/afterEach hooks are **lazy** — only executed if the test function requests that fixture by name in its destructured parameters.
+
 ```ts
 describe('hooks', () => {
   beforeEach(async ({ $ }) => {
     await $`echo setup`;
   });
 
+  // Named fixture (lazy: only runs if test requests 'tmpDir')
   beforeEach('tmpDir', async () => {
     const dir = `/tmp/repterm-${Date.now()}`;
     await Bun.$`mkdir -p ${dir}`;
@@ -160,6 +176,7 @@ describe('hooks', () => {
     await Bun.$`rm -rf ${tmpDir}`;
   });
 
+  // beforeAll/afterAll also support optional naming
   beforeAll(async () => {
     return { shared: 'value' };
   });
@@ -168,6 +185,7 @@ describe('hooks', () => {
     void shared;
   });
 
+  // 'tmpDir' fixture runs because it's requested here
   test('fixture requested', async ({ $, tmpDir, shared }) => {
     await $`touch ${tmpDir}/a`;
     await expect(shared).toBe('value');
@@ -178,7 +196,7 @@ describe('hooks', () => {
 ## Plugin API
 
 ```ts
-import { definePlugin, defineConfig, createTestWithPlugins } from 'repterm';
+import { definePlugin, defineConfig, createTestWithPlugins, describeWithPlugins } from 'repterm';
 
 const loggerPlugin = definePlugin(
   'logger',
@@ -189,6 +207,13 @@ const loggerPlugin = definePlugin(
     context: {
       loggerName: 'default-logger',
     },
+    // Optional lifecycle hooks:
+    hooks: {
+      beforeTest: async (ctx) => { /* runs before each test */ },
+      afterTest: async (ctx, error?) => { /* runs after each test */ },
+      beforeCommand: (command: string) => command, // transform command
+      afterOutput: (output: string) => output,     // transform output
+    },
   })
 );
 
@@ -198,50 +223,13 @@ const config = defineConfig({
 
 const test = createTestWithPlugins(config);
 
+// describeWithPlugins also available for suite-level plugin injection
+// describeWithPlugins(config, 'suite name', () => { ... });
+
 test('plugin demo', async (ctx) => {
   ctx.plugins.logger.info('hello');
   await expect(ctx.loggerName).toBe('default-logger');
 });
 ```
 
-## Kubectl plugin cheatsheet
-
-```ts
-import { defineConfig, createTestWithPlugins, expect } from 'repterm';
-import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
-
-const config = defineConfig({
-  plugins: [kubectlPlugin({ namespace: 'default' })] as const,
-});
-
-const test = createTestWithPlugins(config);
-
-test('k8s demo', async (ctx) => {
-  const k = ctx.plugins.kubectl;
-
-  await k.apply(`
-apiVersion: v1
-kind: Pod
-metadata:
-  name: demo
-spec:
-  containers:
-  - name: demo
-    image: nginx
-`);
-
-  await k.waitForPod('demo', 'Running', 60_000);
-  await expect(pod(k, 'demo')).toBeRunning();
-
-  const watch = await k.get('pods', undefined, { watch: true, output: 'wide' });
-  await watch.interrupt();
-
-  await expect(deployment(k, 'api')).toHaveReadyReplicas(2);
-});
-```
-
-## See Also
-
-- [common-patterns.md](common-patterns.md)
-- [plugin-kubectl.md](plugin-kubectl.md)
-- [terminal-modes.md](terminal-modes.md)
+> For kubectl plugin API and patterns, see `references/plugin-kubectl.md`.
