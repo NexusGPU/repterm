@@ -11,6 +11,22 @@ It runs tests in a real PTY so you can assert on interactive terminal behavior, 
 
 Plugin contributors: see [Plugin Contributor Guide](CONTRIBUTING-PLUGINS.md).
 
+## AI Agent Skill (skills.sh)
+
+This repository includes the `repterm` agent skill at `skills/repterm/`.
+
+Install from GitHub:
+
+```bash
+npx skills add NexusGPU/repterm --skill repterm
+```
+
+Local discovery check:
+
+```bash
+npx skills add . --list
+```
+
 ## Install
 
 ```bash
@@ -63,4 +79,3 @@ iwr https://cdn.tensor-fusion.ai/archive/repterm/install.ps1 -UseBasicParsing | 
 
 - Repterm examples: `packages/repterm/examples/README.md`
 - Kubectl plugin examples: `packages/plugin-kubectl/examples/README.md`
-

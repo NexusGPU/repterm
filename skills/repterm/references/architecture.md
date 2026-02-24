@@ -2,85 +2,31 @@
 
 ## 1. Layers
 
-```mermaid
-graph TB
-    subgraph CLI["CLI"]
-        CLIEntry["src/cli/index.ts"]
-        Reporter["src/cli/reporter.ts"]
-    end
-
-    subgraph Runner["Runner"]
-        Loader["runner/loader.ts"]
-        Filter["runner/filter.ts"]
-        RunnerCore["runner/runner.ts"]
-        Scheduler["runner/scheduler.ts"]
-        Worker["runner/worker*.ts"]
-        Artifacts["runner/artifacts.ts"]
-    end
-
-    subgraph API["API"]
-        TestAPI["api/test.ts + describe.ts"]
-        Hooks["api/hooks.ts"]
-        Expect["api/expect.ts"]
-        Steps["api/steps.ts"]
-        Plugin["plugin/index.ts + withPlugins.ts"]
-    end
-
-    subgraph Terminal["Terminal"]
-        TerminalImpl["terminal/terminal.ts"]
-        DollarFn["terminal/dollar.ts"]
-        Session["terminal/session.ts"]
-        Recorder["recording/recorder.ts"]
-    end
-
-    CLIEntry --> Loader
-    CLIEntry --> Filter
-    CLIEntry --> RunnerCore
-    CLIEntry --> Scheduler
-    RunnerCore --> Hooks
-    RunnerCore --> TerminalImpl
-    RunnerCore --> Artifacts
-    Scheduler --> Worker
-    Worker --> RunnerCore
-    RunnerCore --> Reporter
-    TestAPI -.-> RunnerCore
-    Plugin -.-> TestAPI
-    TerminalImpl --> DollarFn
-    TerminalImpl --> Session
-    TerminalImpl --> Recorder
 ```
+CLI (cli/index.ts, cli/reporter.ts, cli/plugin.ts)
+  -> Runner (runner/loader.ts, filter.ts, runner.ts, scheduler.ts, worker*.ts, artifacts.ts, config.ts)
+    -> API (api/test.ts, describe.ts, hooks.ts, expect.ts, steps.ts; plugin/index.ts, withPlugins.ts)
+    -> Terminal (terminal/terminal.ts, dollar.ts, session.ts; recording/recorder.ts; terminal/shell-integration.ts)
+```
+
+Key dependencies:
+- CLI entry calls Loader, Filter, Runner, Scheduler
+- Runner calls Hooks, Terminal, Artifacts, Reporter
+- Terminal uses Dollar ($), Session, Recorder, ShellIntegration (OSC 133)
+- Plugin system feeds into Test API -> Runner (with beforeTest/afterTest/beforeCommand/afterOutput hooks)
 
 ## 2. End-to-end flow
 
-```mermaid
-sequenceDiagram
-    participant CLI
-    participant Loader
-    participant Registry
-    participant Filter
-    participant Runner
-    participant Terminal
-    participant Reporter
+1. CLI parses args -> `discoverTests(paths)` -> `loadTestFiles(files)` -> Registry registers suites/tests
+2. `filterSuites(allSuites, recordMode)` applies --record filter
+3. Single worker: `runAllSuites(...)` / Multi worker: `createScheduler(...).run(...)`
+4. Runner notifies Reporter (onTestStart -> onTestResult -> onRunComplete)
+5. Runner creates Terminal per test (recording/ptyOnly/promptLineCount)
+6. Lifecycle: beforeEach -> test fn -> afterEach
 
-    CLI->>Loader: discoverTests(paths)
-    CLI->>Loader: loadTestFiles(files)
-    Loader-->>Registry: register suites/tests
-    CLI->>Filter: filterSuites(allSuites, recordMode)
+## 3. Terminal mode
 
-    alt workers == 1
-      CLI->>Runner: runAllSuites(...)
-    else workers > 1
-      CLI->>Runner: createScheduler(...).run(...)
-    end
-
-    Runner->>Reporter: onTestStart
-    Runner->>Terminal: createTerminal({ recording, ptyOnly })
-    Runner->>Runner: beforeEach -> test -> afterEach
-    Runner->>Reporter: onTestResult
-    Runner->>Reporter: onRunComplete
-```
-
-## 3. Terminal mode (current)
+> Full details: see `references/terminal-modes.md`
 
 In runTest() (runner/runner.ts):
 
@@ -89,45 +35,13 @@ In runTest() (runner/runner.ts):
 - `shouldRecord = cliRecordMode && testRecordConfig`
 - `shouldUsePtyOnly = testRecordConfig && !cliRecordMode`
 
-terminal.$\`cmd\` / terminal.run() paths:
-
-| Scenario | Execution | Result |
-| --- | --- | --- |
-| Default (non-interactive) | Bun.spawn | reliable code |
-| PTY-only | PTY | code often -1 |
-| Recording | asciinema + tmux + PTY | produces .cast |
-| Interactive | PTY | expect/send/interrupt |
-| silent: true | Bun.spawn | for JSON/exit code |
-
 ## 4. API and plugins
 
 - Entry: `packages/repterm/src/index.ts`
 - DSL: `test/describe/step/hooks`
 - Assertions: expect.extend() for terminal and command matchers
 - Plugins:
-  - definePlugin(name, setup)
+  - definePlugin(name, setup) — setup returns { methods, context, hooks? }
   - defineConfig({ plugins }) for runtime
-  - createTestWithPlugins(config) injects ctx.plugins.*
-
-## 5. Kubectl plugin
-
-- Core: `packages/plugin-kubectl/src/index.ts`
-- Matchers: `packages/plugin-kubectl/src/matchers.ts`
-- Examples: `packages/plugin-kubectl/examples/*.ts`
-
-Plugin: CRUD, wait, rollout, watch, port-forward, events/nodes/cp; matchers toHaveReadyReplicas, toHaveStatusField, etc.
-
-## 6. Code navigation
-
-- CLI/flow: `packages/repterm/src/cli/index.ts`
-- Filter: `packages/repterm/src/runner/filter.ts`
-- Lifecycle: `packages/repterm/src/runner/runner.ts`
-- Terminal: `packages/repterm/src/terminal/terminal.ts`
-- Plugins: `packages/repterm/src/plugin/index.ts`
-- Unit tests: `packages/repterm/tests/unit/*.test.ts`
-
-## See Also
-
-- [runner-pipeline.md](runner-pipeline.md)
-- [terminal-modes.md](terminal-modes.md)
-- [api-cheatsheet.md](api-cheatsheet.md)
+  - createTestWithPlugins(config) / describeWithPlugins(config) inject ctx.plugins.*
+  - Plugin hooks: beforeTest, afterTest, beforeCommand (transform), afterOutput (transform)
