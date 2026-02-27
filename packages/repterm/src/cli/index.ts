@@ -7,7 +7,7 @@
 import { parseArgs } from 'util';
 import { loadConfig, getDefaultConfig } from '../runner/config.js';
 import { createArtifactManager } from '../runner/artifacts.js';
-import { discoverTests, loadTestFiles } from '../runner/loader.js';
+import { discoverTests, loadTestsWithSetup } from '../runner/loader.js';
 import { runAllSuites } from '../runner/runner.js';
 import { createScheduler } from '../runner/scheduler.js';
 import { createReporter } from './reporter.js';
@@ -135,12 +135,7 @@ async function main(): Promise<void> {
 
     // Load test files
     console.log('Loading tests...');
-    await loadTestFiles(testFiles);
-
-    // Get registered tests from the registry
-    // Use relative import to ensure we use the same registry instance
-    const { registry } = await import('../api/test.js');
-    const allSuites = registry.getRootSuites();
+    const allSuites = await loadTestsWithSetup(testPaths);
 
     // Apply test filtering based on --record flag
     const { filterSuites, countTests } = await import('../runner/filter.js');

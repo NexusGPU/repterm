@@ -10,7 +10,7 @@ import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, P
 import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
 import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
-import { createShellInitFile, stripAnsiEnhanced, type ShellIntegrationMode } from './shell-integration.js';
+import { createShellInitFile, stripAnsiEnhanced, type ShellIntegrationMode, type ShellEvent } from './shell-integration.js';
 import { createDollarFunction, type DollarFunction } from './dollar.js';
 
 /**
@@ -98,6 +98,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private shellIntegrationEnabled: boolean;
   private shellIntegrationMode: ShellIntegrationMode = 'regex';
   private shellInitCleanup?: () => void;
+  private shellInitCmd?: string; // Shell command with integration init (e.g. 'bash --rcfile /path')
+  private defaultCommandSet: boolean = false; // Whether setTmuxDefaultCommand has been called
   private lastExitCode: number = -1;
   // Baseline command_finished event count before current command (for OSC 133)
   private osc133BaselineCount: number = 0;
@@ -178,6 +180,28 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
+   * Inherit prompt detection results from parent terminal.
+   * Child terminals created via create() share the same shell prompt style,
+   * so they should use the parent's detected prompt pattern instead of the
+   * generic fallback regex (which fails with right-aligned prompt decorations).
+   */
+  inheritPromptConfig(parent: Terminal): void {
+    if (parent.detectedPromptPattern) {
+      this.detectedPromptPattern = parent.detectedPromptPattern;
+    }
+    if (parent.promptLineCount > 0 && !this.promptLineCountConfigured) {
+      this.promptLineCount = parent.promptLineCount;
+    }
+    this.shellIntegrationEnabled = parent.shellIntegrationEnabled;
+    // If parent confirmed OSC 133 works (passthrough enabled, markers detected),
+    // child can start in osc133 mode directly — the new pane uses the same
+    // shell init (via setTmuxDefaultCommand) and shares the same session/parser.
+    // This avoids the fragile regex path and its race condition with right-aligned
+    // prompt decorations entirely.
+    this.shellIntegrationMode = parent.shellIntegrationMode;
+  }
+
+  /**
    * Select the tmux pane that this terminal is bound to
    * Uses arrow key navigation to switch panes without showing pane IDs
    */
@@ -204,6 +228,17 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     // Update current active pane
     this.sharedState.currentActivePane = this.paneIndex;
+    // Sync parser so incoming OSC events are tagged to this pane
+    this.session.getOSC133Parser().setActivePane(this.paneIndex);
+  }
+
+  /**
+   * Public wrapper for selectPane — used by PTYProcessImpl.interrupt()
+   * to switch tmux active pane before sending Ctrl+C, ensuring
+   * DCS passthrough forwards the resulting D marker.
+   */
+  async selectPanePublic(): Promise<void> {
+    return this.selectPane();
   }
 
   /**
@@ -251,6 +286,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
           const shellCmd = shell.includes('zsh')
             ? 'zsh'  // zsh uses ZDOTDIR env var
             : `bash --rcfile ${initFile.filePath}`;
+          this.shellInitCmd = shellCmd;  // Save for tmux default-command
           tmuxCmd = `tmux new -s ${sessionName} '${shellCmd}'`;
         } else {
           // Unsupported shell or file creation failed → skip injection
@@ -283,6 +319,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         if (passthroughOk && this.session.hasShellIntegration()) {
           this.shellIntegrationMode = 'osc133';
         }
+        // Initialize parser active pane to 0
+        this.session.getOSC133Parser().setActivePane(0);
         // If passthrough failed (unlikely — tmux too old or timeout), lazy upgrade
         // in waitForOutputStable() will handle it on first real command.
       } else {
@@ -430,7 +468,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     if (this.shellIntegrationMode === 'osc133') {
       try {
         const parser = this.session.getOSC133Parser();
-        await parser.waitForEvent('prompt_start', timeout);
+        await parser.waitForEvent('prompt_start', timeout, this.paneIndex);
         return;
       } catch {
         // Fall through to polling
@@ -624,6 +662,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     let newTerminal: Terminal;
 
     if (this.recording && this.tmuxSessionName) {
+      // Set tmux default-command once so new panes also get shell integration
+      if (!this.defaultCommandSet && this.shellInitCmd) {
+        await this.setTmuxDefaultCommand(this.tmuxSessionName, this.shellInitCmd);
+        this.defaultCommandSet = true;
+      }
+
       // Recording: Ctrl+B to split. Odd panes: horizontal ("), even: vertical (%).
       const currentPaneCount = this.sharedState.paneCount;
       const splitKey = currentPaneCount % 2 === 1 ? '"' : '%';
@@ -631,11 +675,15 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.session.write('\x02');  // Ctrl+B
       await this.sleep(100);
       this.session.write(splitKey);
-      await this.sleep(800);      // Wait for new pane to init
 
+      // Update pane tracking BEFORE sleep — new pane's shell init markers
+      // (A/D/A) arrive during the sleep and must be tagged to the new pane
       const newPaneIndex = this.sharedState.paneCount;
       this.sharedState.paneCount++;
-      this.sharedState.currentActivePane = newPaneIndex;  // New pane is now active after split
+      this.sharedState.currentActivePane = newPaneIndex;
+      this.session.getOSC133Parser().setActivePane(newPaneIndex);
+
+      await this.sleep(800);      // Wait for new pane to init
 
       // Create a new Terminal bound to the new pane
       newTerminal = new Terminal({
@@ -643,6 +691,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         tmuxSessionName: this.tmuxSessionName,
       });
       newTerminal.setParentSession(this.session, this.sharedState, newPaneIndex);
+      newTerminal.inheritPromptConfig(this);
     } else {
       // Non-recording: create independent terminal
       newTerminal = new Terminal({ recording: false });
@@ -738,6 +787,21 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await this.sleep(50);
     }
     return false;
+  }
+
+  /**
+   * Set tmux default-command so new panes created via split also get shell integration.
+   * Clears __REPTERM_SHELL_INTEGRATION env var so the guard check passes in the new shell.
+   */
+  private async setTmuxDefaultCommand(sessionName: string, shellCmd: string): Promise<void> {
+    try {
+      const cmd = `env __REPTERM_SHELL_INTEGRATION= ${shellCmd}`;
+      const proc = Bun.spawn(
+        ['tmux', 'set-option', '-t', sessionName, 'default-command', cmd],
+        { stdout: 'pipe', stderr: 'pipe' },
+      );
+      await proc.exited;
+    } catch { /* ignore */ }
   }
 
   /**
@@ -1011,6 +1075,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   /**
    * Wait for command to complete.
    * Uses three-layer detection: OSC 133 > Sentinel > Enhanced regex.
+   * In recording mode with OSC 133, races L1 (D marker) against regex (prompt polling)
+   * to avoid long waits when DCS passthrough drops the D marker after pane splits.
    */
   private async waitForOutputStable(timeout: number = 10000): Promise<void> {
     const startTime = Date.now();
@@ -1020,8 +1086,74 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const parser = this.session.getOSC133Parser();
       // Use baseline count recorded before command execution to avoid race condition
       const targetCount = this.osc133BaselineCount + 1;
+
+      if (this.recording) {
+        // Recording mode: race D marker against regex prompt polling.
+        // DCS passthrough can lose D markers after pane splits, so we
+        // poll for the prompt in parallel to avoid a full L1 timeout.
+        const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*$/;
+        const checkInterval = 100;
+        // Skip a few initial polls to give D marker time to arrive first
+        const gracePolls = 3;
+        let pollCount = 0;
+        let resolved = false;
+
+        // Listen for D marker event
+        const onEvent = (event: ShellEvent) => {
+          if (resolved) return;
+          if (event.type !== 'command_finished') return;
+          if (this.paneIndex !== undefined && event.paneIndex !== this.paneIndex) return;
+          const count = parser.countEvents('command_finished', this.paneIndex);
+          if (count >= targetCount) {
+            resolved = true;
+            this.lastExitCode = event.exitCode ?? 0;
+          }
+        };
+        parser.on('event', onEvent);
+
+        // Check if D marker already arrived
+        if (parser.countEvents('command_finished', this.paneIndex) >= targetCount) {
+          const events = parser.getEvents().filter(
+            e => e.type === 'command_finished' && (this.paneIndex === undefined || e.paneIndex === this.paneIndex)
+          );
+          if (events.length >= targetCount) {
+            resolved = true;
+            this.lastExitCode = events[targetCount - 1].exitCode ?? 0;
+          }
+        }
+
+        while (!resolved && Date.now() - startTime < timeout) {
+          await this.sleep(checkInterval);
+          if (resolved) break;
+          pollCount++;
+          // After grace period, start checking prompt via regex
+          if (pollCount > gracePolls) {
+            const output = await this.capturePaneOutput();
+            const stripped = this.stripAnsi(output);
+            const lastLine = stripped.trim().split('\n').pop() || '';
+            if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+              // Prompt detected — give D marker a brief grace period
+              if (!resolved) {
+                await this.sleep(200);
+              }
+              break;
+            }
+          }
+        }
+
+        parser.removeListener('event', onEvent);
+
+        if (resolved) {
+          return;
+        }
+        // D marker lost — prompt was detected by regex, exit code unknown
+        this.lastExitCode = -1;
+        return;
+      }
+
+      // Non-recording mode: pure L1 wait (no DCS passthrough issues)
       try {
-        const event = await parser.waitForNthEvent('command_finished', targetCount, timeout);
+        const event = await parser.waitForNthEvent('command_finished', targetCount, timeout, this.paneIndex);
         this.lastExitCode = event.exitCode ?? 0;
         return;
       } catch {
@@ -1040,7 +1172,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         const output = await this.capturePaneOutput();
         const stripped = this.stripAnsi(output);
         const lastLine = stripped.trim().split('\n').pop() || '';
-        if (promptPattern.test(lastLine)) {
+        if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
           break;
         }
       }
@@ -1062,25 +1194,30 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     // Lazy upgrade: if shell integration is enabled but wasn't detected during init
     // (e.g. passthrough enabled too late), check if markers arrived during this command.
     // If so, upgrade to osc133 mode for subsequent commands and capture this command's exit code.
+    // Use per-pane check to avoid false positives from other panes' markers.
     if (this.shellIntegrationEnabled && this.shellIntegrationMode !== 'osc133') {
-      // Brief wait for markers to arrive through the PTY data stream.
-      // Markers travel: shell → tmux passthrough → asciinema → PTY → parser.
-      // By the time regex detects the prompt, markers are typically in-flight.
-      if (!this.session.hasShellIntegration()) {
+      const parser = this.session.getOSC133Parser();
+      // Check if THIS pane has any prompt_start markers (not just any pane)
+      let paneHasMarkers = parser.getLastEvent('prompt_start', this.paneIndex) !== undefined;
+      if (!paneHasMarkers) {
+        // Brief wait for markers to arrive through the PTY data stream.
+        // Markers travel: shell → tmux passthrough → asciinema → PTY → parser.
         await this.sleep(200);
+        paneHasMarkers = parser.getLastEvent('prompt_start', this.paneIndex) !== undefined;
       }
-      if (this.session.hasShellIntegration()) {
+      if (paneHasMarkers) {
         this.shellIntegrationMode = 'osc133';
         // Try to capture exit code from this command's markers
-        const parser = this.session.getOSC133Parser();
         const targetCount = this.osc133BaselineCount + 1;
-        const matching = parser.getEvents().filter(e => e.type === 'command_finished');
+        const matching = parser.getEvents().filter(
+          e => e.type === 'command_finished' && e.paneIndex === this.paneIndex
+        );
         if (matching.length >= targetCount) {
           this.lastExitCode = matching[targetCount - 1].exitCode ?? -1;
         } else {
           // Markers not yet arrived — wait briefly
           try {
-            const event = await parser.waitForNthEvent('command_finished', targetCount, 2000);
+            const event = await parser.waitForNthEvent('command_finished', targetCount, 2000, this.paneIndex);
             this.lastExitCode = event.exitCode ?? -1;
           } catch {
             // Timeout: markers didn't arrive, keep regex mode for this command
@@ -1089,6 +1226,28 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         }
       }
     }
+  }
+
+  /**
+   * Check if a line is a "bare" prompt — prompt character with no command text after it.
+   * Used to distinguish a real prompt from a command echo line (e.g. "❯ kubectl wait ...")
+   * that still contains the prompt character.
+   */
+  private isBarePromptLine(line: string): boolean {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+
+    const promptChars = ['$', '#', '%', '>', '❯', '→', 'λ', '»', '❮', '›', '⟩'];
+    for (const ch of promptChars) {
+      const idx = trimmed.lastIndexOf(ch);
+      if (idx >= 0) {
+        const afterPrompt = trimmed.substring(idx + ch.length);
+        if (afterPrompt.length === 0 || afterPrompt.trim().length === 0 || /^\s{2,}/.test(afterPrompt)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -1188,7 +1347,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     // Record OSC 133 baseline before sending command (avoid race condition)
     if (this.shellIntegrationMode === 'osc133') {
-      this.osc133BaselineCount = this.session.getOSC133Parser().countEvents('command_finished');
+      this.osc133BaselineCount = this.session.getOSC133Parser().countEvents('command_finished', this.paneIndex);
     }
 
     // In recording mode, type with human-like delay
@@ -1701,6 +1860,9 @@ class PTYProcessImpl implements PTYProcess {
       const paneIndex = this.terminal.getPaneIndex();
 
       if (this.terminal.isRecording() && tmuxSession && paneIndex !== undefined) {
+        // Switch to the target pane first so DCS passthrough forwards the
+        // D marker (command_finished) that the shell emits after receiving SIGINT
+        await this.terminal.selectPanePublic();
         // tmux send-keys to target pane
         await Bun.spawn([
           'tmux', 'send-keys', '-t', `${tmuxSession}:0.${paneIndex}`, 'C-c'

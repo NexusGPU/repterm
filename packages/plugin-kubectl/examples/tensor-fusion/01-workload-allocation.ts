@@ -61,6 +61,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
                 tflopsLimit: '2000m',
                 vramRequest: '1Gi',
                 vramLimit: '2Gi',
+                isLocalGPU: false,
             });
 
             const result = await kubectl.apply(yaml);
@@ -149,7 +150,7 @@ describe('Test Scenario 1: Normal Resource Allocation - TensorFusionWorkload', {
         await step('Delete TensorFusionWorkload', {
             showStepTitle: false,
             typingSpeed: 0,
-            pauseAfter: 2000
+            pauseAfter: 6000
         }, async () => {
             const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);
             await expect(result).toBeSuccessful();

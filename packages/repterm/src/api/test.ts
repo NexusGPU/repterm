@@ -55,6 +55,7 @@ class TestRegistry {
       steps: [],
       fn,
       options,
+      timeout: options?.timeout,
     };
 
     suite.tests.push(testCase);

@@ -53,6 +53,8 @@ export interface LogsOptions {
 export interface ExecOptions {
     /** Specify container name */
     container?: string;
+    /** Command timeout in milliseconds (default: 300000 = 5 min) */
+    timeout?: number;
 }
 
 /**
@@ -518,9 +520,13 @@ EOF`;
                     args += ` -o jsonpath='${escapedPath}'`;
                     const cmd = buildCommand(args);
                     const result = await testContext.terminal.run(cmd);
-                    const output = testContext.terminal.isPtyMode?.()
-                        ? (await testContext.terminal.run(cmd, { silent: true })).stdout
-                        : result.stdout;
+                    let output: string;
+                    if (testContext.terminal.isPtyMode?.()) {
+                        const silentResult = await testContext.terminal.run(cmd, { silent: true });
+                        output = silentResult.stdout;
+                    } else {
+                        output = result.stdout;
+                    }
 
                     const trimmed = output.trim();
 
@@ -626,11 +632,19 @@ EOF`;
                 },
 
                 exec: async (podName: string, command: string | string[], options?: ExecOptions) => {
-                    const cmd = Array.isArray(command) ? command.join(' ') : command;
+                    const cmd = Array.isArray(command)
+                        ? command.map(arg => /[^a-zA-Z0-9_./:=@%^+,-]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg).join(' ')
+                        : command;
                     let args = `exec ${podName}`;
                     if (options?.container) args += ` -c ${options.container}`;
                     args += ` -- ${cmd}`;
-                    return executeCommand(args);
+                    const fullCmd = buildCommand(args);
+                    if (ctx.debug) {
+                        console.log(`[kubectl] Executing: ${fullCmd}`);
+                    }
+                    const runOpts = options?.timeout ? { timeout: options.timeout } : undefined;
+                    const result = await testContext.terminal.run(fullCmd, runOpts);
+                    return result.output;
                 },
 
                 describe: async (resource: string, name?: string) => {

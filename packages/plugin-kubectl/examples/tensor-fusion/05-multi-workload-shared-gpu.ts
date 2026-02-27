@@ -45,7 +45,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         // ===== Step 1: Record initial state =====
         await step('Acquire target GPU and record initial resources', {
             showStepTitle: false,
-            typingSpeed: 60,
+            typingSpeed: 0,
             pauseAfter: 1500,
         }, async () => {
             gpuName = await getFirstGpuName(kubectl);
@@ -62,7 +62,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         // ===== Step 2: Create two workloads =====
         await step('Create first Workload: ' + WL_NAME_1, {
             showStepTitle: false,
-            typingSpeed: 100,
+            typingSpeed: 0,
             pauseAfter: 2000,
         }, async () => {
             const yaml = workloadYaml(WL_NAME_1, {
@@ -78,7 +78,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
 
         await step('Create second Workload: ' + WL_NAME_2, {
             showStepTitle: false,
-            typingSpeed: 100,
+            typingSpeed: 0,
             pauseAfter: 2000,
         }, async () => {
             const yaml = workloadYaml(WL_NAME_2, {
@@ -108,6 +108,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
 
         await step('Wait for ' + WL_NAME_2 + ' Ready', {
             showStepTitle: false,
+            typingSpeed: 0,
             pauseAfter: 1500,
         }, async () => {
             const result = await kubectl.wait(
@@ -120,7 +121,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         });
 
         await step('Verify both Workload statuses are Running', {
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000,
         }, async () => {
             const wl1 = tensorfusionworkload(kubectl, WL_NAME_1);
@@ -133,7 +134,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         // ===== Step 4: Verify GPU available resource deduction =====
         await step('Check GPU available resources change', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2500,
         }, async () => {
             await sleep(1000);
@@ -152,7 +153,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         // ===== Step 5: Verify runningApps =====
         await step('Check GPU runningApps contains both workloads', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2500,
         }, async () => {
             const runningApps = await kubectl.getJsonPath<Array<{
@@ -177,7 +178,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         // ===== Step 6: Cleanup =====
         await step('Delete two TensorFusionWorkloads', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000,
         }, async () => {
             const r1 = await kubectl.delete('tensorfusionworkload', WL_NAME_1);
@@ -188,6 +189,7 @@ describe('Test Scenario 5: Multiple Workloads Sharing GPU', { record: true }, ()
         });
 
         await step('Wait for resource release and verify recovery', {
+            typingSpeed: 0,
             pauseAfter: 2000,
         }, async () => {
             await new Promise(resolve => setTimeout(resolve, 5000));

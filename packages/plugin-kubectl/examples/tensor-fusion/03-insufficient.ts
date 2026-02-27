@@ -122,7 +122,9 @@ describe('Test Scenario 3: Insufficient Resource Scenario', { record: true }, ()
             typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
-            const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);
+            const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME, {
+                force: true
+            });
             await expect(result).toBeSuccessful();
         });
     });

@@ -47,6 +47,8 @@ export interface ShellEvent {
   exitCode?: number;
   /** Byte offset in the output stream */
   rawPosition: number;
+  /** Index of the tmux pane that was active when this event was parsed */
+  paneIndex?: number;
 }
 
 export type ShellIntegrationMode = 'osc133' | 'sentinel' | 'regex' | 'none';
@@ -64,6 +66,12 @@ export class OSC133Parser extends EventEmitter {
   private pendingBuffer = '';
   private events: ShellEvent[] = [];
   private active = false;
+  private activePane: number = 0;
+
+  /** Set the currently active tmux pane index (events will be tagged with this) */
+  setActivePane(paneIndex: number): void {
+    this.activePane = paneIndex;
+  }
 
   /** Whether any OSC 133 markers have been detected */
   isActive(): boolean {
@@ -75,17 +83,20 @@ export class OSC133Parser extends EventEmitter {
     return [...this.events];
   }
 
-  /** Get the most recent event of a given type */
-  getLastEvent(type: ShellEvent['type']): ShellEvent | undefined {
+  /** Get the most recent event of a given type, optionally filtered by pane */
+  getLastEvent(type: ShellEvent['type'], paneIndex?: number): ShellEvent | undefined {
     for (let i = this.events.length - 1; i >= 0; i--) {
-      if (this.events[i].type === type) return this.events[i];
+      const e = this.events[i];
+      if (e.type === type && (paneIndex === undefined || e.paneIndex === paneIndex)) return e;
     }
     return undefined;
   }
 
-  /** Count events of a given type */
-  countEvents(type: ShellEvent['type']): number {
-    return this.events.filter(e => e.type === type).length;
+  /** Count events of a given type, optionally filtered by pane */
+  countEvents(type: ShellEvent['type'], paneIndex?: number): number {
+    return this.events.filter(e =>
+      e.type === type && (paneIndex === undefined || e.paneIndex === paneIndex)
+    ).length;
   }
 
   /** Feed raw PTY data into the parser */
@@ -95,9 +106,9 @@ export class OSC133Parser extends EventEmitter {
     this.totalBytesProcessed += data.length;
   }
 
-  /** Wait for the next event of a given type */
-  waitForEvent(type: ShellEvent['type'], timeout: number): Promise<ShellEvent> {
-    const existing = this.getLastEvent(type);
+  /** Wait for the next event of a given type, optionally filtered by pane */
+  waitForEvent(type: ShellEvent['type'], timeout: number, paneIndex?: number): Promise<ShellEvent> {
+    const existing = this.getLastEvent(type, paneIndex);
     if (existing) return Promise.resolve(existing);
 
     return new Promise<ShellEvent>((resolve, reject) => {
@@ -105,6 +116,7 @@ export class OSC133Parser extends EventEmitter {
 
       const onEvent = (event: ShellEvent) => {
         if (settled || event.type !== type) return;
+        if (paneIndex !== undefined && event.paneIndex !== paneIndex) return;
         settled = true;
         clearTimeout(timer);
         this.removeListener('event', onEvent);
@@ -122,9 +134,11 @@ export class OSC133Parser extends EventEmitter {
     });
   }
 
-  /** Wait for the Nth event of a given type */
-  waitForNthEvent(type: ShellEvent['type'], n: number, timeout: number): Promise<ShellEvent> {
-    const matching = this.events.filter(e => e.type === type);
+  /** Wait for the Nth event of a given type, optionally filtered by pane */
+  waitForNthEvent(type: ShellEvent['type'], n: number, timeout: number, paneIndex?: number): Promise<ShellEvent> {
+    const matching = this.events.filter(e =>
+      e.type === type && (paneIndex === undefined || e.paneIndex === paneIndex)
+    );
     if (matching.length >= n) {
       return Promise.resolve(matching[n - 1]);
     }
@@ -135,6 +149,7 @@ export class OSC133Parser extends EventEmitter {
 
       const onEvent = (event: ShellEvent) => {
         if (settled || event.type !== type) return;
+        if (paneIndex !== undefined && event.paneIndex !== paneIndex) return;
         seen++;
         if (seen >= n) {
           settled = true;
@@ -186,6 +201,7 @@ export class OSC133Parser extends EventEmitter {
         type: typeMap[marker],
         timestamp: Date.now(),
         rawPosition: this.totalBytesProcessed + match.index,
+        paneIndex: this.activePane,
       };
 
       if (marker === 'D' && data) {

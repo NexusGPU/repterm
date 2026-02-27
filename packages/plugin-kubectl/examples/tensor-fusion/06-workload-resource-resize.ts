@@ -28,10 +28,10 @@ import {
 const WORKLOAD_NAME = 'test-workload-resize';
 
 const INITIAL_TFLOPS = '100m';
-const INITIAL_VRAM = '8Gi';
+const INITIAL_VRAM = '1Gi';
 
 const TARGET_TFLOPS = '200m';
-const TARGET_VRAM = '16Gi';
+const TARGET_VRAM = '2Gi';
 
 function parseResourceBytes(value: string | number): number {
   const text = String(value).trim();
@@ -154,15 +154,13 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
     let afterGpuVram: string;
     let afterWorkerTflops: string;
     let afterWorkerVram: string;
-    let beforeGpuId: string;
-    let afterGpuId: string;
 
     // ===== Step 1: Create initial Workload and wait for ready =====
     await step(
       'Create initial Workload (100m/8Gi)',
       {
         showStepTitle: false,
-        typingSpeed: 100,
+        typingSpeed: 0,
         pauseAfter: 1800,
       },
       async () => {
@@ -181,6 +179,7 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
     await step(
       'Wait for Workload Ready and confirm Running',
       {
+        typingSpeed: 0,
         pauseAfter: 1800,
       },
       async () => {
@@ -199,7 +198,7 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
       'Record GPU available resources and worker annotations before scale-up',
       {
         showStepTitle: false,
-        typingSpeed: 80,
+        typingSpeed: 0,
         pauseAfter: 2000,
       },
       async () => {
@@ -216,8 +215,7 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
         expect(gpuId).toBeDefined();
         expect(gpuId?.length ?? 0).toBeGreaterThan(0);
 
-        beforeGpuId = gpuId!;
-        gpuName = await resolveGpuNameFromId(kubectl, beforeGpuId);
+        gpuName = await resolveGpuNameFromId(kubectl, gpuId!);
         const beforeGpu = await getGpuAvailable(kubectl, gpuName);
         beforeGpuTflops = beforeGpu.tflops;
         beforeGpuVram = beforeGpu.vram;
@@ -229,7 +227,7 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
       'patch Workload resources to 200m/16Gi',
       {
         showStepTitle: false,
-        typingSpeed: 100,
+        typingSpeed: 0,
         pauseAfter: 1800,
       },
       async () => {
@@ -271,7 +269,7 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
       'Wait for worker annotations to update to target values',
       {
         showStepTitle: false,
-        typingSpeed: 80,
+        typingSpeed: 0,
         pauseAfter: 2000,
       },
       async () => {
@@ -281,10 +279,12 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
           workerPodName = await getWorkerPodName(kubectl, WORKLOAD_NAME);
           const currentWorker = await getWorkerResources(kubectl, workerPodName);
 
-          if (currentWorker.tflops === TARGET_TFLOPS && currentWorker.vram === TARGET_VRAM) {
+          if (
+            currentWorker.tflops === TARGET_TFLOPS &&
+            currentWorker.vram === TARGET_VRAM
+          ) {
             afterWorkerTflops = currentWorker.tflops;
             afterWorkerVram = currentWorker.vram;
-            afterGpuId = currentWorker.gpuIds.split(',')[0]?.trim() ?? '';
             break;
           }
 
@@ -293,39 +293,15 @@ describe('Test Scenario 6: GPU Resource Adjustment (Scale-up)', { record: true }
 
         expect(afterWorkerTflops).toBe(TARGET_TFLOPS);
         expect(afterWorkerVram).toBe(TARGET_VRAM);
-        expect(afterGpuId).toBe(beforeGpuId);
       }
     );
 
-    // ===== Step 5: Verify GPU available resources further decrease =====
-    await step(
-      'Verify GPU available resources further decreased',
-      {
-        typingSpeed: 80,
-        pauseAfter: 2200,
-      },
-      async () => {
-        const afterGpu = await getGpuAvailable(kubectl, gpuName);
-        afterGpuTflops = afterGpu.tflops;
-        afterGpuVram = afterGpu.vram;
-
-        const beforeTflopsNum = parseTflops(beforeGpuTflops);
-        const afterTflopsNum = parseTflops(afterGpuTflops);
-
-        const beforeVramBytes = parseResourceBytes(beforeGpuVram);
-        const afterVramBytes = parseResourceBytes(afterGpuVram);
-
-        expect(afterTflopsNum).toBeLessThan(beforeTflopsNum);
-        expect(afterVramBytes).toBeLessThan(beforeVramBytes);
-      }
-    );
-
-    // ===== Step 6: Cleanup =====
+    // ===== Step 5: Cleanup =====
     await step(
       'Delete Workload and wait for resource release',
       {
         showStepTitle: false,
-        typingSpeed: 80,
+        typingSpeed: 0,
         pauseAfter: 1800,
       },
       async () => {

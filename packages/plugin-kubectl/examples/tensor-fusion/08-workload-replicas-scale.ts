@@ -42,7 +42,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     // ===== Step 1: Create replicas=1 Workload and wait for ready =====
     await step('Create Workload (replicas=1)', {
       showStepTitle: false,
-      typingSpeed: 100,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const yaml = workloadYaml(WORKLOAD_NAME, {
@@ -59,6 +59,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
 
     await step('Wait for Workload Ready', {
       showStepTitle: false,
+      typingSpeed: 0,
       pauseAfter: 1800,
     }, async () => {
       const waitResult = await kubectl.wait(
@@ -75,7 +76,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
 
     // ===== Step 2: Record current worker pod count =====
     await step('Record current worker pod count', {
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 1500,
     }, async () => {
       const beforeCount = await getWorkerPodCount(kubectl, WORKLOAD_NAME);
@@ -92,7 +93,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     // ===== Step 3: Scale up replicas to 2 =====
     await step('patch Workload replicas=2', {
       showStepTitle: false,
-      typingSpeed: 100,
+      typingSpeed: 0,
       pauseAfter: 1800,
     }, async () => {
       const patchResult = await kubectl.patch(
@@ -113,6 +114,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     // ===== Step 4: Verify scale-up results =====
     await step('Wait for workerCount=2', {
       showStepTitle: false,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const deadline = Date.now() + DEFAULT_TIMEOUT;
@@ -136,7 +138,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     });
 
     await step('Verify worker pod count is 2 after scale-up', {
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const afterScaleUpCount = await getWorkerPodCount(kubectl, WORKLOAD_NAME);
@@ -147,7 +149,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     // ===== Step 5: Scale down replicas to 1 =====
     await step('patch Workload replicas=1', {
       showStepTitle: false,
-      typingSpeed: 100,
+      typingSpeed: 0,
       pauseAfter: 1800,
     }, async () => {
       const patchResult = await kubectl.patch(
@@ -161,6 +163,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
 
     await step('Wait for workerCount=1', {
       showStepTitle: false,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const deadline = Date.now() + DEFAULT_TIMEOUT;
@@ -184,7 +187,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     });
 
     await step('Verify worker pod count is 1 after scale-down', {
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const afterScaleDownCount = await getWorkerPodCount(kubectl, WORKLOAD_NAME);
@@ -195,7 +198,7 @@ describe('Test Scenario 8: Workload Replicas Scale Up/Down', { record: true }, (
     // ===== Step 6: Cleanup =====
     await step('Delete TensorFusionWorkload', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const deleteResult = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);

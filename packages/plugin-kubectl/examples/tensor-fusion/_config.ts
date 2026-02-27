@@ -83,7 +83,9 @@ export const workloadYaml = (name: string, options: {
   vramRequest?: string;
   vramLimit?: string;
   replicas?: number;
+  gpuCount?: number;
   poolName?: string;
+  isLocalGPU?: boolean;
 } = {}) => `
 apiVersion: tensor-fusion.ai/v1
 kind: TensorFusionWorkload
@@ -95,7 +97,7 @@ metadata:
     test-type: gpu-allocation
 spec:
   replicas: ${options.replicas ?? 1}
-  gpuCount: 1
+  gpuCount: ${options.gpuCount ?? 1}
   poolName: ${options.poolName ?? TEST_GPU_POOL}
   qos: medium
   isolation: soft
@@ -106,9 +108,7 @@ spec:
     limits:
       tflops: ${options.tflopsLimit ?? '2000m'}
       vram: "${options.vramLimit ?? '2Gi'}"
-  isLocalGPU: true
-  gpuIndices:
-    - 0
+  isLocalGPU: ${options.isLocalGPU ?? false}
   autoScalingConfig:
     autoSetResources:
       enable: false
@@ -140,6 +140,7 @@ spec:
     metadata:
       labels:
         app: ${name}
+        tensor-fusion.ai/enabled: "true"
       annotations:
         tensor-fusion.ai/gpu-pool: "${options.poolName ?? TEST_GPU_POOL}"
         tensor-fusion.ai/gpu-count: "1"
@@ -149,13 +150,13 @@ spec:
         tensor-fusion.ai/vram-limit: "${options.vramLimit ?? '2Gi'}"
         tensor-fusion.ai/qos: "medium"
         tensor-fusion.ai/isolation: "soft"
-        tensor-fusion.ai/is-local-gpu: "true"
-        tensor-fusion.ai/gpu-indices: "0"
+        tensor-fusion.ai/is-local-gpu: "false"
+        tensor-fusion.ai/sidecar-worker: "false"
     spec:
       containers:
-      - name: test-container
-        image: nginx:alpine
-        command: ["sleep", "infinity"]
+      - name: test
+        image: registry.cn-hangzhou.aliyuncs.com/tensorfusion/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+        command: ["sh", "-c", "sleep 99d"]
         resources:
           requests:
             memory: "256Mi"
