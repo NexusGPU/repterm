@@ -1,11 +1,9 @@
 /**
  * Test Scenario 9: GPU Remote Invocation
  *
- * Based on `GPU_Remote_Invocation_Test.md`:
- * - Create a remote mode (isLocalGPU=false) TensorFusionWorkload
- * - Create a client pod with remote annotation
+ * - Create a client pod with remote GPU annotations (webhook auto-creates workload + connection)
  * - Verify TensorFusionConnection is automatically created
- * - Verify connection metadata (namespace, labels, ownerReferences) and spec (workloadName, clientPod)
+ * - Verify connection metadata (namespace, labels, ownerReferences) and spec
  * - Execute nvidia-smi and PyTorch verification in client pod to confirm remote GPU usage
  *
  * Run with:
@@ -18,48 +16,13 @@ import {
   describe,
   expect,
   step,
-  tensorfusionworkload,
   DEFAULT_TIMEOUT,
   TEST_GPU_POOL,
   TEST_NAMESPACE,
   type KubectlMethods,
 } from './_config.js';
 
-const WORKLOAD_NAME = 'test-remote-workload';
 const CLIENT_POD_NAME = 'test-remote-client';
-
-/**
- * 远程模式 TensorFusionWorkload YAML 模板
- */
-function remoteWorkloadYaml(name: string): string {
-  return `
-apiVersion: tensor-fusion.ai/v1
-kind: TensorFusionWorkload
-metadata:
-  name: ${name}
-  namespace: ${TEST_NAMESPACE}
-  labels:
-    app: ${name}
-    test-type: gpu-remote
-spec:
-  replicas: 1
-  gpuCount: 1
-  poolName: ${TEST_GPU_POOL}
-  qos: medium
-  isolation: soft
-  resources:
-    requests:
-      tflops: 100m
-      vram: "1Gi"
-    limits:
-      tflops: 100m
-      vram: "1Gi"
-  isLocalGPU: false
-  autoScalingConfig:
-    autoSetResources:
-      enable: false
-`;
-}
 
 /**
  * 远程模式 client pod YAML 模板
@@ -82,6 +45,9 @@ metadata:
     tensor-fusion.ai/vram-limit: "1Gi"
     tensor-fusion.ai/inject-container: "app"
 spec:
+  priorityClassName: tensor-fusion-high
+  nodeSelector:
+    kubernetes.io/hostname: cpu
   restartPolicy: Never
   containers:
     - name: app
@@ -120,49 +86,10 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
     let connName: string;
     let connNamespace: string;
 
-    // ===== Step 1: 创建远程模式 Workload =====
-    await step('创建远程模式 Workload（isLocalGPU=false）', {
-      showStepTitle: false,
-      typingSpeed: 100,
-      pauseAfter: 2000,
-    }, async () => {
-      const yaml = remoteWorkloadYaml(WORKLOAD_NAME);
-      const result = await kubectl.apply(yaml);
-      await expect(result).toBeSuccessful();
-    });
-
-    await step('等待 Workload Ready', {
-      showStepTitle: false,
-      pauseAfter: 1800,
-    }, async () => {
-      const waitResult = await kubectl.wait(
-        'tensorfusionworkload',
-        WORKLOAD_NAME,
-        'Ready',
-        { timeout: DEFAULT_TIMEOUT },
-      );
-      await expect(waitResult).toBeSuccessful();
-
-      const workload = tensorfusionworkload(kubectl, WORKLOAD_NAME);
-      await expect(workload).toHaveStatusField('phase', 'Running');
-    });
-
-    await step('确认 Workload 为远程模式', {
-      typingSpeed: 80,
-      pauseAfter: 1500,
-    }, async () => {
-      const spec = await kubectl.getJsonPath<{
-        isLocalGPU?: boolean;
-        workerCount?: number;
-      }>('tensorfusionworkload', WORKLOAD_NAME, '.spec');
-
-      expect(spec?.isLocalGPU).toBe(false);
-    });
-
-    // ===== Step 2: 创建 client pod =====
+    // ===== Step 1: 创建 client pod（webhook 自动创建 workload + connection）=====
     await step('创建远程模式 client pod', {
       showStepTitle: false,
-      typingSpeed: 100,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const yaml = clientPodYaml(CLIENT_POD_NAME, TEST_GPU_POOL);
@@ -172,15 +99,16 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
 
     await step('等待 client pod Ready', {
       showStepTitle: false,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       await kubectl.waitForPod(CLIENT_POD_NAME, 'Running', DEFAULT_TIMEOUT * 3);
     });
 
-    // ===== Step 3: 检查 TensorFusionConnection 自动创建 =====
+    // ===== Step 2: 检查 TensorFusionConnection 自动创建 =====
     await step('从 client pod env 读取 connection 信息', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const info = await getConnectionInfoFromPod(kubectl, CLIENT_POD_NAME);
@@ -192,17 +120,17 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
     });
 
     await step('验证 TensorFusionConnection 资源存在', {
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const exists = await kubectl.exists('tensorfusionconnection', connName);
       expect(exists).toBe(true);
     });
 
-    // ===== Step 4: 验证 connection metadata =====
+    // ===== Step 3: 验证 connection metadata =====
     await step('验证 connection metadata 字段', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const metadata = await kubectl.get<{
@@ -222,9 +150,9 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
       expect(metadata?.ownerName).toBe(CLIENT_POD_NAME);
     });
 
-    // ===== Step 5: 验证 connection spec =====
+    // ===== Step 4: 验证 connection spec =====
     await step('验证 connection spec 字段', {
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const spec = await kubectl.getJsonPath<{
@@ -235,8 +163,9 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
       expect(spec?.clientPod).toBe(CLIENT_POD_NAME);
     });
 
-    // ===== Step 6: （可选）查看 connection 状态 =====
+    // ===== Step 5: 查看 connection 状态 =====
     await step('查看 connection 状态', {
+      typingSpeed: 0,
       pauseAfter: 2000,
     }, async () => {
       const status = await kubectl.getJsonPath<{
@@ -249,15 +178,17 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
       expect(status?.phase).toBeDefined();
     });
 
-    // ===== Step 7: 在 client pod 内验证 GPU 可用 =====
+    // ===== Step 6: 在 client pod 内验证 GPU 可用 =====
+    // 远程模式下 TF client 通过 LD_PRELOAD 注入 libadd_path.so 修改 PATH，
+    // 需要通过 sh -c 包装命令让 LD_PRELOAD 生效。
     await step('执行 nvidia-smi 验证 GPU 可见', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const nvidiaSmiOutput = await kubectl.exec(
         CLIENT_POD_NAME,
-        ['nvidia-smi'],
+        ['sh', '-c', 'nvidia-smi'],
         { container: 'app' },
       );
 
@@ -272,7 +203,7 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
     }, async () => {
       const gpuListOutput = await kubectl.exec(
         CLIENT_POD_NAME,
-        ['nvidia-smi', '-L'],
+        ['sh', '-c', 'nvidia-smi -L'],
         { container: 'app' },
       );
 
@@ -282,12 +213,12 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
 
     await step('PyTorch 检测 CUDA 可用', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const cudaAvailable = await kubectl.exec(
         CLIENT_POD_NAME,
-        ['python3', '-c', 'import torch; print(torch.cuda.is_available())'],
+        ['sh', '-c', 'python3 -c "import torch; print(torch.cuda.is_available())"'],
         { container: 'app' },
       );
 
@@ -295,12 +226,12 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
     });
 
     await step('PyTorch 获取 GPU 设备信息', {
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 2500,
     }, async () => {
       const gpuInfo = await kubectl.exec(
         CLIENT_POD_NAME,
-        ['python3', '-c', 'import torch; print(f"device_count={torch.cuda.device_count()}, name={torch.cuda.get_device_name(0)}")'],
+        ['sh', '-c', 'python3 -c "import torch; print(f\'device_count={torch.cuda.device_count()}, name={torch.cuda.get_device_name(0)}\')"'],
         { container: 'app' },
       );
 
@@ -311,15 +242,12 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
 
     await step('PyTorch GPU 张量运算验证', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 3000,
     }, async () => {
       const tensorTest = await kubectl.exec(
         CLIENT_POD_NAME,
-        [
-          'python3', '-c',
-          'import torch; a = torch.randn(2, 3, device="cuda"); b = torch.randn(3, 2, device="cuda"); c = torch.mm(a, b); print(f"shape={list(c.shape)}, device={c.device}")',
-        ],
+        ['sh', '-c', 'python3 -c "import torch; a = torch.randn(2, 3, device=\'cuda\'); b = torch.randn(3, 2, device=\'cuda\'); c = torch.mm(a, b); print(f\'shape={list(c.shape)}, device={c.device}\')"'],
         { container: 'app' },
       );
 
@@ -328,22 +256,13 @@ describe('测试场景 9: GPU 远程调用', { record: true }, () => {
       expect(tensorTest).toContain('device=cuda');
     });
 
-    // ===== Step 8: 清理 =====
+    // ===== Step 7: 清理 =====
     await step('删除 client pod', {
       showStepTitle: false,
-      typingSpeed: 80,
+      typingSpeed: 0,
       pauseAfter: 1500,
     }, async () => {
       const result = await kubectl.delete('pod', CLIENT_POD_NAME);
-      await expect(result).toBeSuccessful();
-    });
-
-    await step('删除 TensorFusionWorkload', {
-      showStepTitle: false,
-      typingSpeed: 80,
-      pauseAfter: 2000,
-    }, async () => {
-      const result = await kubectl.delete('tensorfusionworkload', WORKLOAD_NAME);
       await expect(result).toBeSuccessful();
 
       await sleep(5000);

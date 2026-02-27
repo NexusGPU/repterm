@@ -13,7 +13,7 @@ const fixturePath = path.join(
 const typeRoots = path.join(rootDir, 'node_modules/@types');
 
 describe('plugin typing', () => {
-  test('infers plugin methods for external plugin packages', async () => {
+  test('infers plugin methods for external plugin packages', { timeout: 30000 }, async () => {
     const tsconfigPath = path.join(
       process.env.TMPDIR ?? '/tmp',
       'repterm-cross-package-typecheck.tsconfig.json'

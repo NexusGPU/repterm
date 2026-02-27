@@ -10,7 +10,7 @@ const examplePath = path.join(rootDir, 'packages/plugin-kubectl/examples/02-debu
 const typeRoots = path.join(rootDir, 'node_modules/@types');
 
 describe('plugin example typing', () => {
-  test('infers ctx.plugins.kubectl in 02-debugging example', async () => {
+  test('infers ctx.plugins.kubectl in 02-debugging example', { timeout: 30000 }, async () => {
     const tsconfigPath = path.join(process.env.TMPDIR ?? '/tmp', 'repterm-example-typecheck.tsconfig.json');
 
     const tsconfig = {

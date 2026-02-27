@@ -8,6 +8,7 @@
 import { test as baseTest } from '../api/test.js';
 import { describe as describeFromDescribe } from '../api/describe.js';
 import type { PluginRuntime, AnyPlugin, AugmentedTestContext } from './index.js';
+import type { TestOptions } from '../runner/models.js';
 
 /**
  * Type for the augmented test function that receives plugin context
@@ -47,11 +48,18 @@ export function createTestWithPlugins<TPlugins extends readonly AnyPlugin[]>(
     /**
      * Wrapped test function with automatic plugin initialization
      */
+    function testWithPlugins(name: string, fn: PluginTestFunction<TPlugins>): void;
+    function testWithPlugins(name: string, options: TestOptions, fn: PluginTestFunction<TPlugins>): void;
     function testWithPlugins(
         name: string,
-        fn: PluginTestFunction<TPlugins>
+        optionsOrFn: TestOptions | PluginTestFunction<TPlugins>,
+        maybeFn?: PluginTestFunction<TPlugins>
     ): void {
-        baseTest(name, async (baseCtx) => {
+        const options = typeof optionsOrFn === 'function' ? undefined : optionsOrFn;
+        const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn!;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const wrappedFn = async (baseCtx: any) => {
             const { terminal } = baseCtx;
 
             // Create plugin factory for new terminals
@@ -81,7 +89,13 @@ export function createTestWithPlugins<TPlugins extends readonly AnyPlugin[]>(
                 await config.runAfterTestHooks(baseCtx, error as Error);
                 throw error;
             }
-        });
+        };
+
+        if (options) {
+            baseTest(name, options, wrappedFn);
+        } else {
+            baseTest(name, wrappedFn);
+        }
     }
 
     return testWithPlugins;

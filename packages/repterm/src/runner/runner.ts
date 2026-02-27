@@ -75,9 +75,20 @@ export async function runSuite(
   const results: RunResult[] = [];
   let suiteContext = { ...inheritedContext };
 
+  // Create a basic terminal for beforeAll/afterAll hooks (never recording, never pty-only)
+  const hookTerminal = createTerminal({
+    cols: process.stdout.columns || 120,
+    rows: process.stdout.rows || 40,
+    recording: false,
+    ptyOnly: false,
+    promptLineCount: options.config.terminal?.promptLineCount,
+    shellIntegration: options.config.terminal?.shellIntegration,
+  });
+
   try {
-    // 1. Run beforeAll hooks for this suite
-    suiteContext = await hooksRegistry.runBeforeAllFor(suite, inheritedContext);
+    // 1. Run beforeAll hooks for this suite (hook terminal always available)
+    const hookContext = { ...inheritedContext, terminal: hookTerminal, $: hookTerminal.$ };
+    suiteContext = await hooksRegistry.runBeforeAllFor(suite, hookContext);
 
     // 2. Run tests in this suite with the merged context
     const testResults = await runTestsInSuite(suite, options, suiteContext);
@@ -93,9 +104,17 @@ export async function runSuite(
   } finally {
     // 4. Run afterAll hooks for this suite (always, even if tests failed)
     try {
-      await hooksRegistry.runAfterAllFor(suite, suiteContext);
+      const afterAllContext = { ...suiteContext, terminal: hookTerminal, $: hookTerminal.$ };
+      await hooksRegistry.runAfterAllFor(suite, afterAllContext);
     } catch (hookError) {
       console.error(`Error in afterAll hook for suite "${suite.name}":`, hookError);
+    }
+
+    // 5. Close the hook terminal
+    try {
+      await hookTerminal.close();
+    } catch {
+      // ignore close errors
     }
   }
 
@@ -166,10 +185,11 @@ export async function runTest(
   });
 
   // Build initial test context with inherited context from beforeAll hooks
+  // terminal and $ are placed after inheritedContext so the test's own terminal always wins
   let context: TestContext = {
+    ...inheritedContext,
     terminal,
     $: terminal.$,
-    ...inheritedContext,
     ...testCase.fixtures,
   };
 

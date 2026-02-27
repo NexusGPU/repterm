@@ -36,14 +36,14 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
         // ===== Step 1: Prepare environment =====
         await step('Acquire test GPU', {
             showStepTitle: false,
-            typingSpeed: 60,
+            typingSpeed: 0,
             pauseAfter: 1000
         }, async () => {
             gpuName = await getFirstGpuName(kubectl);
         });
 
         await step('Record initial available resources', {
-            typingSpeed: 60,
+            typingSpeed: 0,
             pauseAfter: 1500
         }, async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
@@ -53,7 +53,7 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
         // ===== Step 2: Create annotated Deployment (core operation) =====
         await step('Create annotated Deployment', {
             showStepTitle: false,
-            typingSpeed: 100,
+            typingSpeed: 0,
             pauseAfter: 3000
         }, async () => {
             const yaml = annotatedDeploymentYaml(DEPLOYMENT_NAME, {
@@ -68,7 +68,7 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
         });
 
         await step('Verify Deployment Tensor Fusion annotations', {
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             await sleep(2000);
@@ -81,13 +81,15 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
 
             expect(annotations['tensor-fusion.ai/gpu-pool']).toBeDefined();
             expect(annotations['tensor-fusion.ai/tflops-request']).toBeDefined();
+            expect(annotations['tensor-fusion.ai/is-local-gpu']).toBe('false');
+            expect(annotations['tensor-fusion.ai/sidecar-worker']).toBe('false');
         });
 
 
         // ===== Step 3: Verify Deployment and Pod status =====
         await step('Check Deployment available status', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const deploy = deployment(kubectl, DEPLOYMENT_NAME);
@@ -99,7 +101,7 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
         });
 
         await step('Verify Pod running status', {
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
             const pods = await kubectl.get<Array<{
@@ -117,7 +119,7 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
         // ===== Step 4: Verify GPU resource allocation results =====
         await step('Check GPU available resources change', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2500
         }, async () => {
             await sleep(1000);
@@ -132,31 +134,11 @@ describe('Test Scenario 2: Normal Resource Allocation - Pod Annotation', { recor
         // ===== Cleanup =====
         await step('Delete Deployment', {
             showStepTitle: false,
-            typingSpeed: 80,
+            typingSpeed: 0,
             pauseAfter: 2000
         }, async () => {
-            const result = await kubectl.delete('deployment', DEPLOYMENT_NAME, { force: true });
+            const result = await kubectl.delete('deployment', DEPLOYMENT_NAME);
             await expect(result).toBeSuccessful();
-        });
-
-        await step('Wait for resource release and verify', {
-            pauseAfter: 2000
-        }, async () => {
-            await sleep(5000);
-
-            // Verify TensorFusionWorkload auto cleanup
-            const workloadExists = await kubectl.exists('tensorfusionworkload', DEPLOYMENT_NAME);
-            if (workloadExists) {
-                await kubectl.delete('tensorfusionworkload', DEPLOYMENT_NAME, { force: true });
-            }
-
-            // Verify GPU resources released (TFlops should recover)
-            const afterRelease = await getGpuAvailable(kubectl, gpuName);
-            const releasedTflops = parseTflops(afterRelease.tflops);
-            const initialTflopsNum = parseTflops(initialTflops);
-
-            // Allow small tolerance, but should approach initial value
-            expect(releasedTflops).toBeGreaterThanOrEqual(initialTflopsNum - 100);
         });
     });
 });

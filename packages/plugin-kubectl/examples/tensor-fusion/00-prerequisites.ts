@@ -27,21 +27,17 @@ import {
 } from './_config.js';
 
 describe('Prerequisites Check', { record: true }, () => {
-    // ===== Cluster Connection Check =====
-    test('Verify Kubernetes cluster connection', async (ctx) => {
+    test('Verify environment prerequisites', async (ctx) => {
         const { kubectl } = ctx.plugins;
 
-        await step('Check cluster connectivity', async () => {
+        // ===== Cluster Connection Check =====
+        await step('Check cluster connectivity', { typingSpeed: 0 }, async () => {
             const clusterInfo = await kubectl.clusterInfo();
             expect(clusterInfo.reachable).toBe(true);
         });
-    });
 
-    // ===== Tensor Fusion Controller Check =====
-    test('Verify Tensor Fusion Controller running status', async (ctx) => {
-        const { kubectl } = ctx.plugins;
-
-        await step('Check Controller Deployment', async () => {
+        // ===== Tensor Fusion Controller Check =====
+        await step('Check Controller Deployment', { typingSpeed: 0 }, async () => {
             const originalNs = kubectl.getNamespace();
             kubectl.setNamespace(TF_SYSTEM_NAMESPACE);
 
@@ -53,30 +49,22 @@ describe('Prerequisites Check', { record: true }, () => {
                 kubectl.setNamespace(originalNs);
             }
         });
-    });
 
-    // ===== GPUPool Check =====
-    test('Verify GPUPool exists and is ready', async (ctx) => {
-        const { kubectl } = ctx.plugins;
-
-        await step('Check GPUPool existence', async () => {
+        // ===== GPUPool Check =====
+        await step('Check GPUPool existence', { typingSpeed: 0 }, async () => {
             const pool = gpupool(kubectl, TEST_GPU_POOL);
             await expect(pool).toExistInCluster();
         });
 
-        await step('Check GPUPool status', async () => {
+        await step('Check GPUPool status', { typingSpeed: 0 }, async () => {
             const pool = gpupool(kubectl, TEST_GPU_POOL);
             await expect(pool).toHaveStatusField('phase', 'Running');
         });
-    });
 
-    // ===== GPU Resource Check =====
-    test('Verify GPU resources are sufficient', async (ctx) => {
-        const { kubectl } = ctx.plugins;
-
+        // ===== GPU Resource Check =====
         const gpuName = await getFirstGpuName(kubectl);
 
-        await step('Check GPU available resources', async () => {
+        await step('Check GPU available resources', { typingSpeed: 0 }, async () => {
             const available = await getGpuAvailable(kubectl, gpuName);
             const tflopsValue = parseTflops(available.tflops);
 
@@ -84,7 +72,7 @@ describe('Prerequisites Check', { record: true }, () => {
             expect(tflopsValue).toBeGreaterThanOrEqual(2000);
         });
 
-        await step('Check GPU status', async () => {
+        await step('Check GPU status', { typingSpeed: 0 }, async () => {
             const exists = await kubectl.exists('gpu', gpuName);
             expect(exists).toBe(true);
         });
