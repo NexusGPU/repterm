@@ -195,7 +195,7 @@ export function registerK8sMatchers(): void {
                 message: () =>
                     pass
                         ? 'Expected kubectl command to fail, but it succeeded'
-                        : `Expected kubectl command to succeed, but failed:\n${received.output.slice(0, 500)}`,
+                        : `Expected kubectl command to succeed, but failed:\n${received.output.slice(-1000)}`,
                 actual: pass ? 'succeeded' : 'failed',
                 expected: 'succeeded',
             };

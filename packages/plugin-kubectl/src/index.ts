@@ -192,6 +192,10 @@ export interface CpOptions {
 export interface DeleteOptions {
     /** Force delete with --grace-period=0 --force */
     force?: boolean;
+    /** Return immediately without waiting for finalizer processing (--wait=false) */
+    nowait?: boolean;
+    /** Recording mode typing speed (ms/char). Default: inherited from step/global. Set to 0 for instant typing. */
+    typingSpeed?: number;
 }
 
 /**
@@ -415,10 +419,16 @@ EOF`;
                     if (options?.force) {
                         args += ' --grace-period=0 --force';
                     }
+                    if (options?.nowait) {
+                        args += ' --wait=false';
+                    }
                     const cmd = buildCommand(args);
                     const result = await testContext.terminal.run(
                         cmd,
-                        { timeout: options?.force ? 10000 : 60000 }
+                        {
+                            timeout: options?.force ? 10000 : 60000,
+                            typingSpeed: options?.typingSpeed,
+                        }
                     );
                     return new DeleteResult(result.output, cmd, result.code);
                 },
@@ -546,15 +556,13 @@ EOF`;
                 exists: async (resource: string, name: string): Promise<boolean> => {
                     try {
                         const cmd = buildCommand(`get ${resource} ${name} -o name`);
-                        const result = await testContext.terminal.run(`${cmd}`);
-                        // In PTY mode, use silent run for clean output
-                        let stdout = result.stdout;
-                        if (testContext.terminal.isPtyMode?.()) {
-                            const silentResult = await testContext.terminal.run(cmd, { silent: true });
-                            stdout = silentResult.stdout;
-                        }
+                        // Always use silent run: exists() is a utility check that doesn't
+                        // need to be visible in recordings. The PTY run was redundant
+                        // (its result was discarded in PTY mode) and extremely slow in
+                        // recording mode (80ms/char typing + waitForOutputStable).
+                        const result = await testContext.terminal.run(cmd, { silent: true });
                         // Support both formats: deployment/name and deployment.apps/name
-                        return stdout.includes(`/${name}`);
+                        return result.stdout.includes(`/${name}`);
                     } catch {
                         return false;
                     }

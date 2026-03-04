@@ -1,16 +1,35 @@
 /**
  * Terminal API implementation
  * Provides high-level terminal interaction (start/send/wait/snapshot)
- * 
+ *
  * Execution: non-recording/non-interactive uses Bun.spawn (separate stdout/stderr, exact exitCode);
  * recording or interactive uses PTY (rich interaction, exitCode unreliable).
  */
 
-import type { TerminalAPI, WaitOptions, CommandResult, RunOptions, PTYProcess, PluginFactory, TerminalWithPlugins, CommandLog } from '../runner/models.js';
+import type {
+  TerminalAPI,
+  WaitOptions,
+  CommandResult,
+  RunOptions,
+  PTYProcess,
+  PluginFactory,
+  TerminalWithPlugins,
+  CommandLog,
+} from '../runner/models.js';
 import { TerminalSession } from './session.js';
 import { EventEmitter } from 'events';
-import { getCurrentStepOptions, getCurrentStepName, shouldShowStepTitle, markStepTitleShown } from '../api/steps.js';
-import { createShellInitFile, stripAnsiEnhanced, type ShellIntegrationMode, type ShellEvent } from './shell-integration.js';
+import {
+  getCurrentStepOptions,
+  getCurrentStepName,
+  shouldShowStepTitle,
+  markStepTitleShown,
+} from '../api/steps.js';
+import {
+  createShellInitFile,
+  stripAnsiEnhanced,
+  type ShellIntegrationMode,
+  type ShellEvent,
+} from './shell-integration.js';
 import { createDollarFunction, type DollarFunction } from './dollar.js';
 
 /**
@@ -48,24 +67,24 @@ class CommandResultImpl implements CommandResult {
 export interface TerminalConfig {
   cols?: number;
   rows?: number;
-  recording?: boolean;      // Enable recording (asciinema + tmux + typing)
+  recording?: boolean; // Enable recording (asciinema + tmux + typing)
   recordingPath?: string;
-  ptyOnly?: boolean;        // PTY-only (PTY, no recording/typing)
-  tmuxSessionName?: string;  // For multi-window recording
-  tmuxPaneId?: string;  // For split panes
-  promptLineCount?: number;  // Override prompt line count, skip auto-detect
+  ptyOnly?: boolean; // PTY-only (PTY, no recording/typing)
+  tmuxSessionName?: string; // For multi-window recording
+  tmuxPaneId?: string; // For split panes
+  promptLineCount?: number; // Override prompt line count, skip auto-detect
   shellIntegration?: {
-    enabled?: boolean;          // default: true
+    enabled?: boolean; // default: true
     sentinelFallback?: boolean; // default: true
-    shell?: string;             // custom shell path override
+    shell?: string; // custom shell path override
   };
 }
 
 // Shared state for tracking pane count across Terminal and TerminalFactory
 export interface SharedTerminalState {
   paneCount: number;
-  currentActivePane?: number;  // Track which pane is currently active
-  paneOutputs: Map<number, string>;  // Per-pane output buffers for isolation
+  currentActivePane?: number; // Track which pane is currently active
+  paneOutputs: Map<number, string>; // Per-pane output buffers for isolation
 }
 
 /**
@@ -74,19 +93,19 @@ export interface SharedTerminalState {
 export class Terminal extends EventEmitter implements TerminalAPI {
   private session: TerminalSession;
   private recording: boolean;
-  private ptyOnly: boolean;  // PTY-only flag
+  private ptyOnly: boolean; // PTY-only flag
   private recordingPath?: string;
   private closed = false;
   private initialized = false;
   private tmuxSessionName?: string;
   private tmuxPaneId?: string;
   private sharedState: SharedTerminalState;
-  private paneIndex?: number;  // Index of the tmux pane this terminal is bound to
-  private nonInteractiveOutput: string = '';  // Command output in non-interactive mode
-  private commandLogs: CommandLog[] = [];      // Commands run during test
-  private pluginFactory?: PluginFactory<Record<string, unknown>>;  // Plugin factory
-  public plugins?: Record<string, unknown>;  // Plugin instances (for new terminals)
-  public $: DollarFunction;  // Tagged template literal for command execution
+  private paneIndex?: number; // Index of the tmux pane this terminal is bound to
+  private nonInteractiveOutput: string = ''; // Command output in non-interactive mode
+  private commandLogs: CommandLog[] = []; // Commands run during test
+  private pluginFactory?: PluginFactory<Record<string, unknown>>; // Plugin factory
+  public plugins?: Record<string, unknown>; // Plugin instances (for new terminals)
+  public $: DollarFunction; // Tagged template literal for command execution
 
   // Detected or configured prompt line count (default 0)
   private promptLineCount: number = 0;
@@ -111,8 +130,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     this.recordingPath = config.recordingPath;
     this.tmuxSessionName = config.tmuxSessionName;
     this.tmuxPaneId = config.tmuxPaneId;
-    this.sharedState = { paneCount: 1, paneOutputs: new Map() };  // Start with 1 pane
-    this.paneIndex = 0;  // Main terminal is pane 0
+    this.sharedState = { paneCount: 1, paneOutputs: new Map() }; // Start with 1 pane
+    this.paneIndex = 0; // Main terminal is pane 0
     this.nonInteractiveOutput = '';
 
     // Initialize $ tagged template literal
@@ -172,11 +191,15 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   /**
    * Set parent session (for child terminals that share a session)
    */
-  setParentSession(session: TerminalSession, sharedState: SharedTerminalState, paneIndex: number): void {
+  setParentSession(
+    session: TerminalSession,
+    sharedState: SharedTerminalState,
+    paneIndex: number
+  ): void {
     this.session = session;
     this.sharedState = sharedState;
     this.paneIndex = paneIndex;
-    this.initialized = true;  // Already initialized via parent
+    this.initialized = true; // Already initialized via parent
   }
 
   /**
@@ -211,18 +234,19 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     // Track current active pane in shared state
     const currentActive = this.sharedState.currentActivePane ?? 0;
     if (currentActive === this.paneIndex) {
-      return;  // Already on the correct pane
+      return; // Already on the correct pane
     }
 
     // Calculate how many panes to navigate
     // First split is horizontal (up/down), second is vertical (left/right), etc.
     // For simplicity, use Ctrl+B o to cycle through panes
-    const panesToCycle = (this.paneIndex - currentActive + this.sharedState.paneCount) % this.sharedState.paneCount;
+    const panesToCycle =
+      (this.paneIndex - currentActive + this.sharedState.paneCount) % this.sharedState.paneCount;
 
     for (let i = 0; i < panesToCycle; i++) {
-      this.session.write('\x02');  // Ctrl+B (tmux prefix)
+      this.session.write('\x02'); // Ctrl+B (tmux prefix)
       await this.sleep(50);
-      this.session.write('o');     // Cycle to next pane
+      this.session.write('o'); // Cycle to next pane
       await this.sleep(150);
     }
 
@@ -284,9 +308,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
           this.shellInitCleanup = initFile.cleanup;
           extraEnv = initFile.env;
           const shellCmd = shell.includes('zsh')
-            ? 'zsh'  // zsh uses ZDOTDIR env var
+            ? 'zsh' // zsh uses ZDOTDIR env var
             : `bash --rcfile ${initFile.filePath}`;
-          this.shellInitCmd = shellCmd;  // Save for tmux default-command
+          this.shellInitCmd = shellCmd; // Save for tmux default-command
           tmuxCmd = `tmux new -s ${sessionName} '${shellCmd}'`;
         } else {
           // Unsupported shell or file creation failed → skip injection
@@ -333,9 +357,20 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       // cursor_y after first prompt = number of prompt lines - 1.
       if (!this.promptLineCountConfigured) {
         try {
-          const proc = Bun.spawn(['tmux', 'display-message', '-t', `${sessionName}:0.0`, '-p', '#{cursor_y}:#{window_width}:#{window_height}'], {
-            stdout: 'pipe', stderr: 'pipe',
-          });
+          const proc = Bun.spawn(
+            [
+              'tmux',
+              'display-message',
+              '-t',
+              `${sessionName}:0.0`,
+              '-p',
+              '#{cursor_y}:#{window_width}:#{window_height}',
+            ],
+            {
+              stdout: 'pipe',
+              stderr: 'pipe',
+            }
+          );
           const stdout = await new Response(proc.stdout).text();
           await proc.exited;
           const parts = stdout.trim().split(':');
@@ -343,9 +378,10 @@ export class Terminal extends EventEmitter implements TerminalAPI {
           if (!isNaN(cursorY)) {
             this.promptLineCount = cursorY + 1;
           }
-        } catch { /* keep pre-detected value */ }
+        } catch {
+          /* keep pre-detected value */
+        }
       }
-
     } else if (this.ptyOnly) {
       // PTY-only: start shell with optional shell integration via rcfile
       if (this.shellIntegrationEnabled) {
@@ -372,7 +408,6 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       if (this.shellIntegrationEnabled && this.session.hasShellIntegration()) {
         this.shellIntegrationMode = 'osc133';
       }
-
     } else if (this.tmuxPaneId) {
       // This is a split pane, don't initialize a new session
       // Commands will be sent through the main terminal
@@ -421,7 +456,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       try {
         const parser = this.session.getOSC133Parser();
         await parser.waitForEvent('prompt_start', timeout);
-        await this.sleep(100);  // Extra wait for stability
+        await this.sleep(100); // Extra wait for stability
         return;
       } catch {
         // Timeout: fall through to character-based detection
@@ -432,8 +467,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     while (Date.now() - startTime < timeout) {
       const output = this.session.getOutput();
       // Shell ready when prompt appears
-      if (output.includes('$') || output.includes('#') || output.includes('%') || output.includes('>')) {
-        await this.sleep(100);  // Extra wait for stability
+      if (
+        output.includes('$') ||
+        output.includes('#') ||
+        output.includes('%') ||
+        output.includes('>')
+      ) {
+        await this.sleep(100); // Extra wait for stability
         return;
       }
       await this.sleep(50);
@@ -451,7 +491,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const output = this.session.getOutput();
       // Tmux ready when prompt appears
       if (output.includes('$') || output.includes('#') || output.includes('%')) {
-        await this.sleep(300);  // Extra wait for stability
+        await this.sleep(300); // Extra wait for stability
         return;
       }
       await this.sleep(100);
@@ -464,34 +504,105 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    * In recording mode, polls tmux capture-pane for prompt pattern.
    * In OSC 133 mode, waits for prompt_start event.
    */
-  async waitForPromptReady(timeout: number = 3000): Promise<void> {
-    if (this.shellIntegrationMode === 'osc133') {
-      try {
-        const parser = this.session.getOSC133Parser();
-        await parser.waitForEvent('prompt_start', timeout, this.paneIndex);
-        return;
-      } catch {
-        // Fall through to polling
-      }
-    }
-
+  async waitForPromptReady(timeout: number = 3000): Promise<boolean> {
     const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*$/;
 
     if (this.recording && this.tmuxSessionName && this.paneIndex !== undefined) {
+      // Recording mode: ALWAYS verify via capture-pane, because OSC 133
+      // events can be stale (e.g. from before a watch/tail started).
+      // A stale prompt_start event would make us return true even though
+      // a foreground process is currently running and the prompt is gone.
       const startTime = Date.now();
+
+      // Use osc133 as a hint: if a recent prompt_start exists, do one
+      // quick capture-pane check. If that confirms the prompt, return fast.
+      if (this.shellIntegrationMode === 'osc133') {
+        const parser = this.session.getOSC133Parser();
+        const existing = parser.getLastEvent('prompt_start', this.paneIndex);
+        if (existing) {
+          const output = await this.capturePaneOutput();
+          const stripped = this.stripAnsi(output);
+          const lastLine = stripped.trim().split('\n').pop() || '';
+          if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+            return true;
+          }
+          // Stale event — fall through to polling
+        }
+      }
+
       while (Date.now() - startTime < timeout) {
         const output = await this.capturePaneOutput();
         const stripped = this.stripAnsi(output);
         const lastLine = stripped.trim().split('\n').pop() || '';
-        if (promptPattern.test(lastLine)) {
-          return;
+        if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+          return true;
+        }
+        await this.sleep(50);
+      }
+    } else if (this.shellIntegrationMode === 'osc133') {
+      // Non-recording osc133: event-driven is reliable (no DCS passthrough issues)
+      try {
+        const parser = this.session.getOSC133Parser();
+        await parser.waitForEvent('prompt_start', timeout, this.paneIndex);
+        return true;
+      } catch {
+        // Fall through to character polling
+      }
+      // Fallback: poll session output
+      const startTime = Date.now();
+      while (Date.now() - startTime < Math.max(0, timeout - (Date.now() - startTime))) {
+        const lastLine = this.getLastOutputLine();
+        if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+          return true;
         }
         await this.sleep(50);
       }
     } else {
-      // Non-recording PTY or fallback: brief wait
-      await this.sleep(300);
+      // Non-recording, non-osc133: small polling window
+      const startTime = Date.now();
+      while (Date.now() - startTime < timeout) {
+        const lastLine = this.getLastOutputLine();
+        if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+          return true;
+        }
+        await this.sleep(50);
+      }
     }
+
+    return false;
+  }
+
+  /**
+   * Ensure the shell is ready for a new command. If not, try to recover by sending Ctrl+C.
+   * This avoids writing new commands into a still-running foreground process (watch/tail/etc.).
+   */
+  private async ensurePromptReadyForNextCommand(): Promise<void> {
+    if (await this.waitForPromptReady()) {
+      return;
+    }
+
+    // Best-effort recovery: interrupt foreground process and wait for prompt.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (this.recording && this.tmuxSessionName && this.paneIndex !== undefined) {
+        // In recording mode, use tmux send-keys to target the specific pane.
+        // Writing \x03 to the shared session goes to the tmux-active pane,
+        // which might not be this terminal's pane after a selectPane() race.
+        const paneTarget = `${this.tmuxSessionName}:0.${this.paneIndex}`;
+        await Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'C-c'], {
+          stdout: 'pipe', stderr: 'pipe',
+        }).exited;
+      } else {
+        this.session.write('\x03');
+      }
+      await this.sleep(500);
+      if (await this.waitForPromptReady(2000)) {
+        return;
+      }
+    }
+
+    // Don't throw — allow the command to proceed anyway.
+    // The worst case is that the command gets typed into a busy shell,
+    // but throwing here would prevent any cleanup (finally blocks) from running.
   }
 
   /**
@@ -522,7 +633,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   async waitForText(text: string, options: WaitOptions = {}): Promise<void> {
     const timeout = options.timeout ?? 5000;
-    const shouldStripAnsi = options.stripAnsi ?? true;  // Default to true
+    const shouldStripAnsi = options.stripAnsi ?? true; // Default to true
     const startTime = Date.now();
 
     if (this.recording && this.paneIndex !== undefined && this.tmuxSessionName) {
@@ -538,11 +649,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       throw new Error(`Timeout waiting for text "${text}" after ${timeout}ms`);
     } else {
       // Non-recording mode: event-driven via session 'data' + terminal '_outputChanged'
+      const remainingTimeout = Math.max(0, timeout - (Date.now() - startTime));
       return this.waitForSessionCondition(
         () => this.getAllOutput().includes(text),
-        timeout - (Date.now() - startTime),
+        remainingTimeout,
         `Timeout waiting for text "${text}" after ${timeout}ms`,
-        true,
+        true
       );
     }
   }
@@ -648,7 +760,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   /**
    * Set plugin factory (create() will inject plugins). @internal
    */
-  setPluginFactory<TPlugins extends Record<string, unknown>>(factory: PluginFactory<TPlugins>): void {
+  setPluginFactory<TPlugins extends Record<string, unknown>>(
+    factory: PluginFactory<TPlugins>
+  ): void {
     this.pluginFactory = (terminal) => factory(terminal);
   }
 
@@ -658,7 +772,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    * - Non-recording mode: creates independent terminal
    * - If pluginFactory is set, new terminal will have plugins property
    */
-  async create<TPlugins extends Record<string, unknown> = Record<string, unknown>>(): Promise<TerminalWithPlugins<TPlugins>> {
+  async create<TPlugins extends Record<string, unknown> = Record<string, unknown>>(): Promise<
+    TerminalWithPlugins<TPlugins>
+  > {
     let newTerminal: Terminal;
 
     if (this.recording && this.tmuxSessionName) {
@@ -672,7 +788,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const currentPaneCount = this.sharedState.paneCount;
       const splitKey = currentPaneCount % 2 === 1 ? '"' : '%';
 
-      this.session.write('\x02');  // Ctrl+B
+      this.session.write('\x02'); // Ctrl+B
       await this.sleep(100);
       this.session.write(splitKey);
 
@@ -683,7 +799,26 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       this.sharedState.currentActivePane = newPaneIndex;
       this.session.getOSC133Parser().setActivePane(newPaneIndex);
 
-      await this.sleep(800);      // Wait for new pane to init
+      await this.sleep(800); // Wait for new pane to init
+
+      // Active prompt polling: verify the new pane's shell is ready
+      // (the 800ms sleep covers most cases, but slow shell init may need more)
+      const paneTarget = `${this.tmuxSessionName}:0.${newPaneIndex}`;
+      const promptPattern = this.detectedPromptPattern ?? /[\$#%>❯→λ»]\s*$/;
+      const initDeadline = Date.now() + 9000; // Additional 9s after initial 800ms
+      while (Date.now() < initDeadline) {
+        try {
+          const result = await this.runTmuxCommand(`capture-pane -p -t ${paneTarget}`);
+          const stripped = this.stripAnsi(result);
+          const lastLine = stripped.trim().split('\n').pop() || '';
+          if (lastLine && promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+            break;
+          }
+        } catch {
+          /* pane might not exist yet */
+        }
+        await this.sleep(100);
+      }
 
       // Create a new Terminal bound to the new pane
       newTerminal = new Terminal({
@@ -711,21 +846,20 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   async close(): Promise<void> {
     if (!this.closed) {
-      const tmuxSessionToClean = this.tmuxSessionName;  // Keep for cleanup
+      const tmuxSessionToClean = this.tmuxSessionName; // Keep for cleanup
 
       if (this.recording && this.tmuxSessionName && this.session.isActive()) {
         // Wait 2s before ending so user sees final output
         await this.sleep(2000);
         // Ctrl+B d to detach tmux, which ends asciinema recording
         await this.sleep(300);
-        this.session.write('\x02');  // Ctrl+B (tmux prefix)
+        this.session.write('\x02'); // Ctrl+B (tmux prefix)
         await this.sleep(100);
-        this.session.write('d');     // detach
-        await this.sleep(500);       // Wait for asciinema to finish
-
+        this.session.write('d'); // detach
+        await this.sleep(500); // Wait for asciinema to finish
       } else if (this.recording && this.session.isActive()) {
         // Recording without tmux - send Ctrl+D to end asciinema recording
-        this.session.write('\x04');  // Ctrl+D
+        this.session.write('\x04'); // Ctrl+D
         await this.sleep(500);
       }
 
@@ -770,14 +904,14 @@ export class Terminal extends EventEmitter implements TerminalAPI {
    */
   private async enableTmuxPassthroughWithRetry(
     sessionName: string,
-    timeout: number = 5000,
+    timeout: number = 5000
   ): Promise<boolean> {
     const start = Date.now();
     while (Date.now() - start < timeout) {
       try {
         const proc = Bun.spawn(
           ['tmux', 'set-option', '-t', sessionName, 'allow-passthrough', 'on'],
-          { stdout: 'pipe', stderr: 'pipe' },
+          { stdout: 'pipe', stderr: 'pipe' }
         );
         const code = await proc.exited;
         if (code === 0) return true;
@@ -796,12 +930,14 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private async setTmuxDefaultCommand(sessionName: string, shellCmd: string): Promise<void> {
     try {
       const cmd = `env __REPTERM_SHELL_INTEGRATION= ${shellCmd}`;
-      const proc = Bun.spawn(
-        ['tmux', 'set-option', '-t', sessionName, 'default-command', cmd],
-        { stdout: 'pipe', stderr: 'pipe' },
-      );
+      const proc = Bun.spawn(['tmux', 'set-option', '-t', sessionName, 'default-command', cmd], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
       await proc.exited;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -855,14 +991,19 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     try {
       // Create temp tmux session
-      await Bun.spawn(['tmux', 'new-session', '-d', '-s', tempSessionName, '-x', '80', '-y', '24'], {
-        stdout: 'pipe', stderr: 'pipe',
-      }).exited;
+      await Bun.spawn(
+        ['tmux', 'new-session', '-d', '-s', tempSessionName, '-x', '80', '-y', '24'],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }
+      ).exited;
       await this.sleep(1000); // Wait for shell to start
 
       // Capture prompt pattern before sending command
       const promptCaptureProc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', tempSessionName], {
-        stdout: 'pipe', stderr: 'pipe'
+        stdout: 'pipe',
+        stderr: 'pipe',
       });
       const promptScreen = await new Response(promptCaptureProc.stdout).text();
       await promptCaptureProc.exited;
@@ -870,21 +1011,30 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
       // Send test command to detect prompt line count
       await Bun.spawn(['tmux', 'send-keys', '-t', tempSessionName, `echo ${testMarker}`, 'Enter'], {
-        stdout: 'pipe', stderr: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
       }).exited;
       await this.sleep(1000); // Wait for command to finish
 
       // Get current cursorY
-      const cursorProc = Bun.spawn(['tmux', 'display-message', '-t', tempSessionName, '-p', '#{cursor_y}'], {
-        stdout: 'pipe', stderr: 'pipe'
-      });
+      const cursorProc = Bun.spawn(
+        ['tmux', 'display-message', '-t', tempSessionName, '-p', '#{cursor_y}'],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }
+      );
       const cursorY = parseInt((await new Response(cursorProc.stdout).text()).trim(), 10) || 0;
       await cursorProc.exited;
 
       // Capture screen content
-      const captureProc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', tempSessionName, '-S', '0', '-E', String(cursorY)], {
-        stdout: 'pipe', stderr: 'pipe'
-      });
+      const captureProc = Bun.spawn(
+        ['tmux', 'capture-pane', '-p', '-t', tempSessionName, '-S', '0', '-E', String(cursorY)],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }
+      );
       const screenContent = await new Response(captureProc.stdout).text();
       await captureProc.exited;
 
@@ -893,7 +1043,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       let markerLine = -1;
       for (let i = 0; i < lines.length; i++) {
         if (lines[i].includes(testMarker)) {
-          markerLine = i;  // Keep going to get last occurrence
+          markerLine = i; // Keep going to get last occurrence
         }
       }
 
@@ -905,7 +1055,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
       // Kill temp session
       await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName], {
-        stdout: 'pipe', stderr: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
       }).exited;
     } catch {
       // On failure keep defaults
@@ -914,9 +1065,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       // Try to kill temp session
       try {
         await Bun.spawn(['tmux', 'kill-session', '-t', tempSessionName], {
-          stdout: 'pipe', stderr: 'pipe',
+          stdout: 'pipe',
+          stderr: 'pipe',
         }).exited;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -1113,9 +1267,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
         // Check if D marker already arrived
         if (parser.countEvents('command_finished', this.paneIndex) >= targetCount) {
-          const events = parser.getEvents().filter(
-            e => e.type === 'command_finished' && (this.paneIndex === undefined || e.paneIndex === this.paneIndex)
-          );
+          const events = parser
+            .getEvents()
+            .filter(
+              (e) =>
+                e.type === 'command_finished' &&
+                (this.paneIndex === undefined || e.paneIndex === this.paneIndex)
+            );
           if (events.length >= targetCount) {
             resolved = true;
             this.lastExitCode = events[targetCount - 1].exitCode ?? 0;
@@ -1153,7 +1311,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
       // Non-recording mode: pure L1 wait (no DCS passthrough issues)
       try {
-        const event = await parser.waitForNthEvent('command_finished', targetCount, timeout, this.paneIndex);
+        const event = await parser.waitForNthEvent(
+          'command_finished',
+          targetCount,
+          timeout,
+          this.paneIndex
+        );
         this.lastExitCode = event.exitCode ?? 0;
         return;
       } catch {
@@ -1178,6 +1341,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       }
     } else {
       // Non-recording mode: event-driven via session 'data'
+      const remainingTimeout = Math.max(0, timeout - (Date.now() - startTime));
       await this.waitForSessionCondition(
         () => {
           const output = this.session.getOutput();
@@ -1185,9 +1349,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
           const lastLine = stripped.trim().split('\n').pop() || '';
           return promptPattern.test(lastLine);
         },
-        timeout - (Date.now() - startTime),
-        undefined,  // no throw on timeout (matches original behavior)
-        false,      // no _outputChanged needed (prompt detection is PTY-only)
+        remainingTimeout,
+        undefined, // no throw on timeout (matches original behavior)
+        false // no _outputChanged needed (prompt detection is PTY-only)
       );
     }
 
@@ -1209,15 +1373,20 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         this.shellIntegrationMode = 'osc133';
         // Try to capture exit code from this command's markers
         const targetCount = this.osc133BaselineCount + 1;
-        const matching = parser.getEvents().filter(
-          e => e.type === 'command_finished' && e.paneIndex === this.paneIndex
-        );
+        const matching = parser
+          .getEvents()
+          .filter((e) => e.type === 'command_finished' && e.paneIndex === this.paneIndex);
         if (matching.length >= targetCount) {
           this.lastExitCode = matching[targetCount - 1].exitCode ?? -1;
         } else {
           // Markers not yet arrived — wait briefly
           try {
-            const event = await parser.waitForNthEvent('command_finished', targetCount, 2000, this.paneIndex);
+            const event = await parser.waitForNthEvent(
+              'command_finished',
+              targetCount,
+              2000,
+              this.paneIndex
+            );
             this.lastExitCode = event.exitCode ?? -1;
           } catch {
             // Timeout: markers didn't arrive, keep regex mode for this command
@@ -1242,12 +1411,53 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       const idx = trimmed.lastIndexOf(ch);
       if (idx >= 0) {
         const afterPrompt = trimmed.substring(idx + ch.length);
-        if (afterPrompt.length === 0 || afterPrompt.trim().length === 0 || /^\s{2,}/.test(afterPrompt)) {
+        if (
+          afterPrompt.length === 0 ||
+          afterPrompt.trim().length === 0 ||
+          /^\s{2,}/.test(afterPrompt)
+        ) {
           return true;
         }
       }
     }
     return false;
+  }
+
+  private getLastOutputLine(): string {
+    const stripped = this.stripAnsi(this.session.getOutput());
+    return stripped.trim().split('\n').pop() || '';
+  }
+
+  /**
+   * Detect zsh/bsh continuation prompts (e.g. quote>, pipe quote>, dquote>).
+   * When present, the shell is waiting for unfinished input and won't execute new commands.
+   */
+  private isContinuationPromptLine(line: string): boolean {
+    const trimmed = line.trim().toLowerCase();
+    return /(pipe\s+)?(quote|dquote|bquote|heredoc|cmdsubst)>\s*$/.test(trimmed);
+  }
+
+  private async recoverContinuationPrompt(): Promise<void> {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const lastLine = this.getLastOutputLine();
+      if (!this.isContinuationPromptLine(lastLine)) {
+        return;
+      }
+      this.session.write('\x03');
+      await this.sleep(120);
+    }
+  }
+
+  /**
+   * Non-recording PTY path can corrupt very long single-line inputs when sent in one write.
+   * Send in small chunks to keep shell line editor state stable.
+   */
+  private async writeCommandChunked(command: string, chunkSize: number = 256): Promise<void> {
+    for (let i = 0; i < command.length; i += chunkSize) {
+      this.session.write(command.slice(i, i + chunkSize));
+      await this.sleep(2);
+    }
+    this.session.write('\n');
   }
 
   /**
@@ -1265,10 +1475,19 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     checkFn: () => boolean,
     timeout: number,
     errorMessage?: string,
-    listenOutputChanged: boolean = false,
+    listenOutputChanged: boolean = false
   ): Promise<void> {
     // Synchronous immediate check — handles "text already in buffer"
     if (checkFn()) {
+      return Promise.resolve();
+    }
+
+    // Guard against negative timeout values from elapsed-time math.
+    // timeout <= 0 means the wait budget is already exhausted.
+    if (timeout <= 0) {
+      if (errorMessage) {
+        return Promise.reject(new Error(errorMessage));
+      }
       return Promise.resolve();
     }
 
@@ -1323,12 +1542,15 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   /**
    * Execute command in PTY (internal, for PTYProcessImpl)
    */
-  async executeInPty(command: string, options?: {
-    typingSpeed?: number;
-    pauseBefore?: number;
-    showStepTitle?: boolean;
-    stepName?: string;
-  }): Promise<void> {
+  async executeInPty(
+    command: string,
+    options?: {
+      typingSpeed?: number;
+      pauseBefore?: number;
+      showStepTitle?: boolean;
+      stepName?: string;
+    }
+  ): Promise<void> {
     // Initialize session on first command
     if (!this.session.isActive()) {
       await this.initializeSession();
@@ -1347,7 +1569,9 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     // Record OSC 133 baseline before sending command (avoid race condition)
     if (this.shellIntegrationMode === 'osc133') {
-      this.osc133BaselineCount = this.session.getOSC133Parser().countEvents('command_finished', this.paneIndex);
+      this.osc133BaselineCount = this.session
+        .getOSC133Parser()
+        .countEvents('command_finished', this.paneIndex);
     }
 
     // In recording mode, type with human-like delay
@@ -1355,7 +1579,7 @@ export class Terminal extends EventEmitter implements TerminalAPI {
       await this.selectPane();
       // Wait for shell prompt to be ready (replaces blind sleep;
       // critical after interrupt() or rapid sequential commands)
-      await this.waitForPromptReady();
+      await this.ensurePromptReadyForNextCommand();
 
       const hasNewline = command.includes('\n');
       const typingSpeed = options?.typingSpeed ?? 80;
@@ -1375,7 +1599,13 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         this.session.write('\r');
       }
     } else {
-      this.session.write(command + '\n');
+      await this.ensurePromptReadyForNextCommand();
+      await this.recoverContinuationPrompt();
+      if (command.length >= 900) {
+        await this.writeCommandChunked(command);
+      } else {
+        this.session.write(command + '\n');
+      }
     }
 
     await this.sleep(50);
@@ -1388,15 +1618,16 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     const paneTarget = `${this.tmuxSessionName}:0.${this.paneIndex}`;
 
     // Bracketed Paste escape sequences
-    const PASTE_START = '\x1b[200~';  // ESC [ 200 ~
-    const PASTE_END = '\x1b[201~';    // ESC [ 201 ~
+    const PASTE_START = '\x1b[200~'; // ESC [ 200 ~
+    const PASTE_END = '\x1b[201~'; // ESC [ 201 ~
 
     // Wrap command (no final newline; send after paste)
     const wrappedContent = PASTE_START + command + PASTE_END;
 
     // tmux send-keys -l for literal content
     await Bun.spawn(['tmux', 'send-keys', '-l', '-t', paneTarget, wrappedContent], {
-      stdout: 'pipe', stderr: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
     }).exited;
 
     // Wait for shell to process
@@ -1404,7 +1635,8 @@ export class Terminal extends EventEmitter implements TerminalAPI {
 
     // Send Enter to run command
     await Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'Enter'], {
-      stdout: 'pipe', stderr: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
     }).exited;
 
     await this.sleep(200);
@@ -1433,6 +1665,18 @@ class PTYProcessImpl implements PTYProcess {
     this.options = options;
     this.startTime = Date.now();
     this.isInteractive = options.interactive ?? false;
+  }
+
+  /**
+   * In PTY-only mode, very long single-line commands can occasionally leave
+   * the shell in continuation prompt state; prefer spawn for reliability.
+   */
+  private shouldBypassPtyForLongCommand(): boolean {
+    if (this.isInteractive) return false;
+    if (this.options.silent) return false;
+    if (this.terminal.isRecording()) return false;
+    if (!this.terminal.isPtyMode()) return false;
+    return this.command.length >= 900;
   }
 
   // ===== PromiseLike =====
@@ -1470,6 +1714,9 @@ class PTYProcessImpl implements PTYProcess {
     if (this.options.silent) {
       return false;
     }
+    if (this.shouldBypassPtyForLongCommand()) {
+      return false;
+    }
     // Include ptyOnly
     return this.terminal.isRecording() || this.terminal.isPtyMode() || this.isInteractive;
   }
@@ -1478,7 +1725,7 @@ class PTYProcessImpl implements PTYProcess {
    * Sleep helper
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -1538,7 +1785,9 @@ class PTYProcessImpl implements PTYProcess {
    */
   async expect(text: string, options?: { timeout?: number }): Promise<void> {
     if (!this.usePtyMode()) {
-      throw new Error('expect() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })');
+      throw new Error(
+        'expect() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })'
+      );
     }
     await this.startCommand();
     await this.terminal.waitForText(text, options);
@@ -1549,7 +1798,9 @@ class PTYProcessImpl implements PTYProcess {
    */
   async send(input: string): Promise<void> {
     if (!this.usePtyMode()) {
-      throw new Error('send() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })');
+      throw new Error(
+        'send() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })'
+      );
     }
     await this.startCommand();
     await this.terminal.send(input + '\r');
@@ -1560,7 +1811,9 @@ class PTYProcessImpl implements PTYProcess {
    */
   async sendRaw(input: string): Promise<void> {
     if (!this.usePtyMode()) {
-      throw new Error('sendRaw() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })');
+      throw new Error(
+        'sendRaw() requires interactive mode: $({ interactive: true })`cmd` or terminal.run(cmd, { interactive: true })'
+      );
     }
     await this.startCommand();
     await this.terminal.send(input);
@@ -1625,9 +1878,10 @@ class PTYProcessImpl implements PTYProcess {
       }
 
       const result = new CommandResultImpl({
-        code: this.terminal.getShellIntegrationMode() === 'osc133'
-          ? this.terminal.getLastExitCode()
-          : -1, // PTY without shell integration: exitCode unreliable
+        code:
+          this.terminal.getShellIntegrationMode() === 'osc133'
+            ? this.terminal.getLastExitCode()
+            : -1, // PTY without shell integration: exitCode unreliable
         stdout: output,
         stderr: '',
         output,
@@ -1716,9 +1970,13 @@ class PTYProcessImpl implements PTYProcess {
     const startTime = Date.now();
     while (Date.now() - startTime < timeout) {
       try {
-        const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`], {
-          stdout: 'pipe', stderr: 'pipe',
-        });
+        const proc = Bun.spawn(
+          ['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`],
+          {
+            stdout: 'pipe',
+            stderr: 'pipe',
+          }
+        );
         const stdout = await new Response(proc.stdout).text();
         await proc.exited;
         const stripped = this.stripAnsi(stdout);
@@ -1752,7 +2010,11 @@ class PTYProcessImpl implements PTYProcess {
         // 2. Only whitespace after prompt char
         // 3. Content separated by 2+ spaces (right-aligned decoration like timestamps)
         //    A typed command has exactly 1 space: "❯ cmd", while bare has "❯  " or "❯   at 15:57"
-        if (afterPrompt.length === 0 || afterPrompt.trim().length === 0 || /^\s{2,}/.test(afterPrompt)) {
+        if (
+          afterPrompt.length === 0 ||
+          afterPrompt.trim().length === 0 ||
+          /^\s{2,}/.test(afterPrompt)
+        ) {
           return true;
         }
       }
@@ -1771,9 +2033,13 @@ class PTYProcessImpl implements PTYProcess {
 
     try {
       // Capture full pane including scrollback
-      const proc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`, '-S', '-', '-E', '-'], {
-        stdout: 'pipe', stderr: 'pipe',
-      });
+      const proc = Bun.spawn(
+        ['tmux', 'capture-pane', '-p', '-t', `${tmuxSession}:0.${paneIndex}`, '-S', '-', '-E', '-'],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }
+      );
       const stdout = await new Response(proc.stdout).text();
       await proc.exited;
       const stripped = this.stripAnsi(stdout);
@@ -1792,7 +2058,7 @@ class PTYProcessImpl implements PTYProcess {
    */
   private extractOutputFromText(strippedText: string): string {
     // Clean \r from PTY raw output (tmux capture-pane doesn't have \r, but session buffer does)
-    const lines = strippedText.split('\n').map(l => l.replace(/\r/g, ''));
+    const lines = strippedText.split('\n').map((l) => l.replace(/\r/g, ''));
 
     // Find the LAST occurrence of the command text (command echo line).
     // Use the first line of the command for multiline commands (heredoc, etc.),
@@ -1849,8 +2115,11 @@ class PTYProcessImpl implements PTYProcess {
   }
 
   /**
-   * Send Ctrl+C to interrupt the command
-   * In recording mode with tmux, sends directly to the target pane
+   * Send Ctrl+C to interrupt the command.
+   * In recording mode with tmux, sends via tmux send-keys with retry and
+   * verification — two different communication channels (PTY for pane switching
+   * vs tmux CLI for send-keys) can race, and DCS passthrough may drop markers
+   * after pane splits, so we verify the prompt actually appeared.
    */
   async interrupt(): Promise<void> {
     if (this.bunProcess) {
@@ -1863,17 +2132,57 @@ class PTYProcessImpl implements PTYProcess {
         // Switch to the target pane first so DCS passthrough forwards the
         // D marker (command_finished) that the shell emits after receiving SIGINT
         await this.terminal.selectPanePublic();
-        // tmux send-keys to target pane
-        await Bun.spawn([
-          'tmux', 'send-keys', '-t', `${tmuxSession}:0.${paneIndex}`, 'C-c'
-        ], { stdout: 'pipe', stderr: 'pipe' }).exited;
-      } else {
-        await this.terminal.send('\x03');  // Ctrl+C
-      }
 
-      // Allow time for signal processing and trap handlers.
-      // Full prompt recovery is handled by waitForPromptReady() in executeInPty().
-      await this.sleep(200);
+        const maxAttempts = 3;
+        const paneTarget = `${tmuxSession}:0.${paneIndex}`;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          // Send C-c via tmux send-keys (targets pane directly)
+          const proc = Bun.spawn(['tmux', 'send-keys', '-t', paneTarget, 'C-c'], {
+            stdout: 'pipe',
+            stderr: 'pipe',
+          });
+          const exitCode = await proc.exited;
+
+          if (exitCode !== 0) {
+            // tmux send-keys failed — fall back to writing \x03 directly
+            await this.terminal.send('\x03');
+          }
+
+          // Wait for signal processing
+          await this.sleep(500);
+
+          // Verify: check if prompt appeared (command actually stopped)
+          try {
+            const captureProc = Bun.spawn(['tmux', 'capture-pane', '-p', '-t', paneTarget], {
+              stdout: 'pipe',
+              stderr: 'pipe',
+            });
+            const output = await new Response(captureProc.stdout).text();
+            await captureProc.exited;
+            const stripped = stripAnsiEnhanced(output);
+            const lastLine = stripped.trimEnd().split('\n').pop() || '';
+            if (this.isBarePromptLine(lastLine)) {
+              return; // Prompt detected — interrupt succeeded
+            }
+          } catch {
+            /* continue retrying */
+          }
+
+          if (attempt < maxAttempts) {
+            await this.sleep(300);
+          }
+        }
+
+        // Final fallback: write Ctrl+C directly to the session
+        await this.terminal.send('\x03');
+        await this.sleep(500);
+      } else {
+        await this.terminal.send('\x03'); // Ctrl+C
+        // Allow time for signal processing and trap handlers.
+        // Full prompt recovery is handled by ensurePromptReadyForNextCommand() in executeInPty().
+        await this.sleep(200);
+      }
     }
   }
 }
