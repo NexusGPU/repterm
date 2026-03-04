@@ -16,9 +16,10 @@ import {
   describe,
   expect,
   step,
-  DEFAULT_TIMEOUT,
+  TIMEOUTS,
   TEST_GPU_POOL,
   TEST_NAMESPACE,
+  deleteResourceAndWait,
 } from './_config.js';
 
 const POD_NAME = 'test-ollama-inference';
@@ -70,87 +71,121 @@ spec:
 `;
 }
 
-describe('测试场景 12: Ollama LLM 推理', { record: true }, () => {
-  test('远程 GPU 模式下通过 Ollama 执行 LLM 推理', async (ctx) => {
+describe('Test Scenario 12: Ollama LLM Inference', { record: true }, () => {
+  test('Run LLM inference via Ollama with remote GPU', async (ctx) => {
     const { kubectl } = ctx.plugins;
 
-    await step('创建 Ollama 推理 pod', {
-      showStepTitle: false,
-      typingSpeed: 0,
-      pauseAfter: 2500,
-    }, async () => {
-      const yaml = podYaml(POD_NAME, TEST_GPU_POOL);
-      const result = await kubectl.apply(yaml);
-      await expect(result).toBeSuccessful();
-    });
+    await deleteResourceAndWait(kubectl, 'pod', POD_NAME);
 
-    await step('等待 pod 就绪', {
-      showStepTitle: false,
-      typingSpeed: 0,
-      pauseAfter: 2000,
-    }, async () => {
-      await kubectl.waitForPod(POD_NAME, 'Running', DEFAULT_TIMEOUT * 3);
-    });
-
-    await step('等待 Ollama 服务就绪', {
-      typingSpeed: 0,
-      pauseAfter: 2000,
-    }, async () => {
-      const output = await kubectl.exec(
-        POD_NAME,
-        ['sh', '-c', 'for i in $(seq 30); do ollama list >/dev/null 2>&1 && echo READY && exit 0; sleep 1; done; echo TIMEOUT'],
-        { container: 'ollama' },
+    try {
+      await step(
+        'Create Ollama inference pod',
+        {
+          showStepTitle: false,
+          typingSpeed: 0,
+          pauseAfter: 2500,
+        },
+        async () => {
+          const yaml = podYaml(POD_NAME, TEST_GPU_POOL);
+          const result = await kubectl.apply(yaml);
+          await expect(result).toBeSuccessful();
+        }
       );
-      expect(output).toContain('READY');
-    });
 
-    await step(`拉取模型 ${OLLAMA_MODEL}`, {
-      showStepTitle: false,
-      typingSpeed: 0,
-      pauseAfter: 2000,
-    }, async () => {
-      await kubectl.exec(
-        POD_NAME,
-        ['sh', '-c', `ollama pull ${OLLAMA_MODEL}`],
-        { container: 'ollama' },
+      await step(
+        'Wait for pod Ready',
+        {
+          showStepTitle: false,
+          typingSpeed: 0,
+          pauseAfter: 2000,
+        },
+        async () => {
+          await kubectl.waitForPod(POD_NAME, 'Running', TIMEOUTS.POD_READY);
+        }
       );
-    });
 
-    await step('执行 Ollama 推理', {
-      showStepTitle: false,
-      typingSpeed: 0,
-      pauseAfter: 3000,
-    }, async () => {
-      const output = await kubectl.exec(
-        POD_NAME,
-        ['sh', '-c', `ollama run ${OLLAMA_MODEL} "What is 1+1? Answer in one word."`],
-        { container: 'ollama' },
+      await step(
+        'Wait for Ollama service ready',
+        {
+          typingSpeed: 0,
+          pauseAfter: 2000,
+        },
+        async () => {
+          const output = await kubectl.exec(
+            POD_NAME,
+            [
+              'sh',
+              '-c',
+              'for i in $(seq 30); do ollama list >/dev/null 2>&1 && echo READY && exit 0; sleep 1; done; echo TIMEOUT',
+            ],
+            { container: 'ollama' }
+          );
+          expect(output).toContain('READY');
+        }
       );
-      // 验证推理产生了输出
-      expect(output.trim().length).toBeGreaterThan(0);
-    });
 
-    await step('验证模型加载状态', {
-      typingSpeed: 0,
-      pauseAfter: 2000,
-    }, async () => {
-      const psOutput = await kubectl.exec(
-        POD_NAME,
-        ['sh', '-c', 'ollama ps'],
-        { container: 'ollama' },
+      await step(
+        `Pull model ${OLLAMA_MODEL}`,
+        {
+          showStepTitle: false,
+          typingSpeed: 0,
+          pauseAfter: 2000,
+        },
+        async () => {
+          await kubectl.exec(POD_NAME, ['sh', '-c', `ollama pull ${OLLAMA_MODEL}`], {
+            container: 'ollama',
+          });
+        }
       );
-      // ollama ps 应显示已加载的模型
-      expect(psOutput).toContain(OLLAMA_MODEL);
-    });
 
-    await step('删除 Ollama pod', {
-      showStepTitle: false,
-      typingSpeed: 0,
-      pauseAfter: 1500,
-    }, async () => {
-      const result = await kubectl.delete('pod', POD_NAME);
-      await expect(result).toBeSuccessful();
-      await sleep(5000);
-    });
+      await step(
+        'Run Ollama inference',
+        {
+          showStepTitle: false,
+          typingSpeed: 0,
+          pauseAfter: 3000,
+        },
+        async () => {
+          const output = await kubectl.exec(
+            POD_NAME,
+            ['sh', '-c', `ollama run ${OLLAMA_MODEL} "What is 1+1? Answer in one word."`],
+            { container: 'ollama' }
+          );
+          // Verify inference produced output
+          expect(output.trim().length).toBeGreaterThan(0);
+        }
+      );
+
+      await step(
+        'Verify model loaded status',
+        {
+          typingSpeed: 0,
+          pauseAfter: 2000,
+        },
+        async () => {
+          const psOutput = await kubectl.exec(POD_NAME, ['sh', '-c', 'ollama ps'], {
+            container: 'ollama',
+          });
+          // ollama ps should show the loaded model
+          expect(psOutput).toContain(OLLAMA_MODEL);
+        }
+      );
+
+      await step(
+        'Delete Ollama pod',
+        {
+          showStepTitle: false,
+          typingSpeed: 0,
+          pauseAfter: 1500,
+        },
+        async () => {
+          const result = await kubectl.delete('pod', POD_NAME);
+          await expect(result).toBeSuccessful();
+          await sleep(5000);
+        }
+      );
+    } finally {
+      await deleteResourceAndWait(kubectl, 'pod', POD_NAME);
+    }
   });
 });

@@ -21,9 +21,9 @@ describe('discoverTests', () => {
     });
 
     test('discovers test files in directory', async () => {
-        await writeFile(join(testDir, 'foo.test.ts'), '// test');
-        await writeFile(join(testDir, 'bar.test.ts'), '// test');
-        await writeFile(join(testDir, 'util.ts'), '// also a test file now');
+        await writeFile(join(testDir, 'foo.test.ts'), "test('a', () => {})");
+        await writeFile(join(testDir, 'bar.test.ts'), "test('b', () => {})");
+        await writeFile(join(testDir, 'util.ts'), "describe('c', () => {})");
 
         const files = await discoverTests([testDir]);
 
@@ -36,7 +36,7 @@ describe('discoverTests', () => {
 
     test('discovers nested test files', async () => {
         await mkdir(join(testDir, 'nested'));
-        await writeFile(join(testDir, 'nested', 'deep.test.ts'), '// test');
+        await writeFile(join(testDir, 'nested', 'deep.test.ts'), "test('deep', () => {})");
 
         const files = await discoverTests([testDir]);
 
@@ -59,8 +59,8 @@ describe('discoverTests', () => {
     });
 
     test('respects custom pattern option', async () => {
-        await writeFile(join(testDir, 'foo.spec.ts'), '// spec');
-        await writeFile(join(testDir, 'bar.test.ts'), '// test');
+        await writeFile(join(testDir, 'foo.spec.ts'), "test('spec', () => {})");
+        await writeFile(join(testDir, 'bar.test.ts'), "test('bar', () => {})");
 
         const files = await discoverTests([testDir], {
             pattern: /\.spec\.ts$/,
@@ -72,8 +72,8 @@ describe('discoverTests', () => {
 
     test('discovers all .ts files in directory when no .test pattern required', async () => {
         // When passing a directory, should find all .ts files (not just .test.ts)
-        await writeFile(join(testDir, 'example.ts'), '// example test');
-        await writeFile(join(testDir, 'another.ts'), '// another test');
+        await writeFile(join(testDir, 'example.ts'), "test('example', () => {})");
+        await writeFile(join(testDir, 'another.ts'), "test('another', () => {})");
         await writeFile(join(testDir, 'config.json'), '// not a test');
 
         // Using a pattern that matches all .ts files

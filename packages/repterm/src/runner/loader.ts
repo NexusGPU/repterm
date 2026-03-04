@@ -3,7 +3,7 @@
  * Handles finding and importing test files with directory-level setup support
  */
 
-import { readdir, stat } from 'fs/promises';
+import { readdir, stat, readFile } from 'fs/promises';
 import { join, resolve, extname, basename } from 'path';
 import { pathToFileURL } from 'url';
 import type { TestSuite } from './models.js';
@@ -18,6 +18,30 @@ const DEFAULT_PATTERN = /\.(ts|js)$/;
 
 // Setup file name (without extension)
 const SETUP_FILE_NAME = 'setup';
+
+/**
+ * Keep discovery order deterministic and aligned with common `ls` output
+ * (alphabetical by filename/path).
+ */
+function sortEntries(entries: string[]): string[] {
+  return [...entries].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Lightweight static check: is this file a repterm test/setup file?
+ * Matches files that either import from 'repterm' (direct usage or config files)
+ * OR contain test/setup registration calls (test files that import via a local
+ * config re-export like _config.js).
+ * Files that match neither (e.g. plain build scripts) are skipped without execution.
+ */
+async function isReptermFile(filePath: string): Promise<boolean> {
+  try {
+    const content = await readFile(filePath, 'utf-8');
+    return /from\s+['"]repterm['"]|require\s*\(\s*['"]repterm['"]\s*\)|\b(?:describe|test|beforeAll|afterAll)\s*\(/.test(content);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Check if a file is a setup file
@@ -75,7 +99,7 @@ async function findTestFiles(
   const files: string[] = [];
 
   try {
-    const entries = await readdir(dirPath);
+    const entries = sortEntries(await readdir(dirPath));
 
     for (const entry of entries) {
       const fullPath = join(dirPath, entry);
@@ -85,7 +109,9 @@ async function findTestFiles(
         const nestedFiles = await findTestFiles(fullPath, pattern, recursive);
         files.push(...nestedFiles);
       } else if (stats.isFile() && pattern.test(entry)) {
-        files.push(fullPath);
+        if (await isReptermFile(fullPath)) {
+          files.push(fullPath);
+        }
       }
     }
   } catch (error) {
@@ -160,7 +186,7 @@ async function analyzeDirectory(
   dirPath: string,
   pattern: RegExp
 ): Promise<DirectorySuiteInfo> {
-  const entries = await readdir(dirPath);
+  const entries = sortEntries(await readdir(dirPath));
 
   let setupFile: string | undefined;
   const testFiles: string[] = [];
@@ -175,7 +201,7 @@ async function analyzeDirectory(
     } else if (stats.isFile() && pattern.test(entry)) {
       if (isSetupFile(entry)) {
         setupFile = fullPath;
-      } else {
+      } else if (await isReptermFile(fullPath)) {
         testFiles.push(fullPath);
       }
     }
