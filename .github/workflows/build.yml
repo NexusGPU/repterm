@@ -232,7 +232,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Configure npm auth
-        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -244,8 +244,6 @@ jobs:
 
       - name: Publish plugin package
         run: bun run publish:plugin-kubectl
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-repterm-api:
     name: Release repterm-api
@@ -265,7 +263,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Configure npm auth
-        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -274,5 +272,3 @@ jobs:
 
       - name: Publish repterm-api package
         run: bun run publish:plugin-api
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
