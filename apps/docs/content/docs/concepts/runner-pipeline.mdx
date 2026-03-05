@@ -1,0 +1,78 @@
+---
+title: Runner Pipeline
+description: How Repterm discovers, filters, schedules, and executes tests.
+---
+
+## CLI Flow
+
+When you run `repterm`, the following pipeline executes:
+
+1. **Parse arguments** — Load configuration (record, workers, timeout, verbose, prompt-lines, slow-threshold, recording-dir)
+2. **Discover tests** — `discoverTests(paths)` finds `.ts`/`.js` test files. `setup.ts`/`setup.js` files in a directory are auto-loaded before that directory's tests
+3. **Load test files** — Registers suites and tests into the global registry
+4. **Filter** — `filterSuites(allSuites, recordEnabled)` applies the `--record` filter
+5. **Execute** — `workers === 1`: sequential / `workers > 1`: parallel scheduler
+6. **Report** — Stream results and print summary; exit 1 on any failure
+
+## Single-Worker Execution
+
+Tests execute using an **onion model**:
+
+```
+Suite
+  → beforeAll
+  → Tests in order
+    → beforeEach (+ lazy fixtures)
+    → test function (with timeout via Promise.race)
+    → afterEach (cleanup fixtures)
+  → Child suites (recursively)
+  → afterAll
+```
+
+Each test follows this lifecycle:
+
+1. Notify Reporter (`onTestStart`)
+2. Build terminal (recording / PTY-only / spawn based on config)
+3. Lazy-load fixtures based on test function parameter names
+4. Run test function with timeout guard
+5. Produce `RunResult` (with optional recording path)
+6. Cleanup: clear steps, run `afterEach`, close terminal
+
+## Multi-Worker Execution
+
+With `--workers <n>` (n > 1), the scheduler distributes work:
+
+1. Main process creates worker processes and waits for ready signals
+2. Suites are dispatched to idle workers via IPC
+3. Each worker runs its assigned suite and streams results back
+4. Main process aggregates results and recycles workers
+
+## Reporter
+
+The reporter handles test output:
+
+- **onTestStart** — Prints suite hierarchy
+- **onTestResult** — Prints pass/fail with duration (highlighted if > `slowThreshold`)
+- **onRunComplete** — Prints summary and failure details (stack traces shown with `--verbose`)
+
+Options: `verbose` (boolean), `colors` (default true), `slowThreshold` (default 50ms).
+
+## Artifacts
+
+Recording artifacts are managed automatically:
+
+- Base directory: `/tmp/repterm` (configurable via `--recording-dir`)
+- Each run gets a unique ID (timestamp + random suffix)
+- `.cast` files are produced for recording tests
+- Recording paths are passed to the Reporter for display
+
+## Default Configuration
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Suite timeout | 1,500,000ms (25 min) | Maximum time for a suite |
+| Test timeout | 300,000ms (5 min) | Maximum time for a test |
+| Command timeout | 300,000ms (5 min) | Maximum time per command |
+| Workers | 1 | Number of parallel workers |
+| Typing speed | 80ms/char | Character typing speed in recording |
+| Recording dir | `/tmp/repterm` | Output directory for recordings |

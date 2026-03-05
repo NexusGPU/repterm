@@ -1,0 +1,8 @@
+{
+  "title": "Plugins",
+  "pages": [
+    "overview",
+    "creating-plugins",
+    "plugin-api"
+  ]
+}

@@ -1,0 +1,72 @@
+---
+title: Plugin System Overview
+description: Understand how Repterm's plugin system extends testing capabilities.
+---
+
+## What Are Plugins?
+
+Repterm's plugin system lets you extend the testing framework with custom functionality. Plugins can:
+
+- **Add custom methods** accessible via `ctx.plugins.<name>.*`
+- **Inject context properties** into the test context
+- **Hook into the test lifecycle** (`beforeTest`, `afterTest`)
+- **Transform commands and output** (`beforeCommand`, `afterOutput`)
+
+## How Plugins Work
+
+A plugin is defined with `definePlugin()` and returns an object with three optional sections:
+
+```ts
+const myPlugin = definePlugin('myPlugin', () => ({
+  methods: {
+    // Custom methods accessible via ctx.plugins.myPlugin
+    doSomething: async () => { /* ... */ },
+  },
+  context: {
+    // Properties injected into test context
+    myConfig: 'value',
+  },
+  hooks: {
+    // Lifecycle hooks
+    beforeTest: async (ctx) => { /* ... */ },
+    afterTest: async (ctx, error?) => { /* ... */ },
+    beforeCommand: (command) => command,
+    afterOutput: (output) => output,
+  },
+}));
+```
+
+## Using Plugins
+
+Plugins are registered with `defineConfig()` and injected into tests with `createTestWithPlugins()`:
+
+```ts
+import { defineConfig, createTestWithPlugins, expect } from 'repterm';
+
+const config = defineConfig({
+  plugins: [myPlugin] as const,
+});
+
+const test = createTestWithPlugins(config);
+
+test('plugin test', async (ctx) => {
+  // Access plugin methods
+  await ctx.plugins.myPlugin.doSomething();
+
+  // Access injected context
+  expect(ctx.myConfig).toBe('value');
+});
+```
+
+## Lifecycle Hooks
+
+| Hook | When | Purpose |
+| --- | --- | --- |
+| `beforeTest(ctx)` | Before each test | Setup resources, initialize state |
+| `afterTest(ctx, error?)` | After each test | Cleanup resources, log errors |
+| `beforeCommand(command)` | Before each command | Transform or log commands |
+| `afterOutput(output)` | After command output | Transform or filter output |
+
+## Official Plugins
+
+- **[@nexusgpu/repterm-plugin-kubectl](/docs/kubectl/overview)** — Kubernetes testing with kubectl commands, resource assertions, and lifecycle management

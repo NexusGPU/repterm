@@ -1,0 +1,166 @@
+---
+title: Troubleshooting
+description: Solutions for common Repterm issues
+---
+
+## Quick Symptom Lookup
+
+| Symptom | Likely Cause | Action |
+| --- | --- | --- |
+| `--record` fails to start | Missing `asciinema` or `tmux` | Install dependencies (see [Recording Issues](#recording-issues) below) |
+| `code === -1` | Running under PTY or recording mode | Assert on output content instead, or use `silent: true` (see [Exit Code Issues](#exit-code-issues)) |
+| `waitForText` timeout | Text not present, or hidden by ANSI codes | Increase timeout, inspect with `terminal.snapshot()`, or use `stripAnsi: false` (see [waitForText Failures](#waitfortext-failures)) |
+| 0 tests found | Wrong file path or empty filter | Verify the path and `{ record: true }` flag (see [Test Discovery](#test-discovery)) |
+| Kubectl tests hang | Missing `watch.interrupt()` | Interrupt watch processes explicitly (see [Kubectl Plugin](#kubectl-plugin)) |
+
+---
+
+## Recording Issues
+
+### Missing Dependencies
+
+Recording mode requires both `asciinema` and `tmux`. Install them with your system package manager:
+
+```bash
+# macOS
+brew install asciinema tmux
+
+# Ubuntu / Debian
+sudo apt-get install asciinema tmux
+```
+
+Verify the installation:
+
+```bash
+asciinema --version
+tmux -V
+```
+
+### Recording Appears Stuck
+
+If a recording session hangs or does not terminate, a stale tmux session may be the cause. List and clean up tmux sessions:
+
+```bash
+# List active tmux sessions
+tmux list-sessions
+
+# Kill all tmux sessions
+tmux kill-server
+```
+
+Then re-run your tests.
+
+### No `.cast` File Generated
+
+Both conditions must be met for a `.cast` file to be produced:
+
+1. The CLI must be invoked with the `--record` flag: `repterm --record tests/`
+2. The test or suite must be marked with `{ record: true }`
+
+If either condition is missing, no recording is created. Without `--record`, marked tests run in PTY-only mode. With `--record`, only marked tests execute.
+
+---
+
+## Exit Code Issues
+
+### `CommandResult.code` Returns `-1`
+
+Under PTY or recording mode, the exit code may not be reliably captured. This is a known limitation of running commands through a pseudo-terminal.
+
+**Solution 1: Assert on output instead of exit code.**
+
+```ts
+// Instead of this:
+await expect(result.code).toBe(0);
+
+// Do this:
+await expect(result).toSucceed();
+await expect(result).toContainInOutput('expected text');
+```
+
+**Solution 2: Use `silent: true` for reliable exit codes.**
+
+```ts
+const result = await $({ silent: true })`grep "pattern" file.txt`;
+await expect(result).toFail(); // exit code is reliable
+```
+
+The `silent: true` option runs the command outside the PTY layer, providing accurate exit codes at the cost of not capturing terminal-specific output.
+
+---
+
+## waitForText Failures
+
+### Text Not Found
+
+If `waitForText` or `expect` times out, the expected text may not have appeared yet or may contain invisible characters.
+
+**Inspect the terminal state** to see what is actually present:
+
+```ts
+const snapshot = terminal.snapshot();
+console.log(snapshot);
+```
+
+**Increase the timeout** for slow commands:
+
+```ts
+const proc = terminal.run('slow-command', {
+  interactive: true,
+  timeout: 60_000,
+});
+await proc.expect('Done');
+```
+
+### ANSI Escape Codes Interfering
+
+Terminal output frequently includes ANSI escape codes for colors and formatting. These codes are invisible when rendered but present in the raw output, which can cause exact text matches to fail.
+
+Use `stripAnsi: false` to match against the raw output including escape codes:
+
+```ts
+await proc.expect({ text: 'filename', stripAnsi: false });
+```
+
+Or inspect the raw output to understand what characters are present before adjusting your assertions.
+
+---
+
+## Test Discovery
+
+### No Tests Found
+
+Repterm discovers test files matching `.ts` and `.js` extensions by default.
+
+Common causes for zero tests found:
+
+- **Wrong path:** Double-check the directory or file path passed to `repterm`.
+- **Using `--record` without `{ record: true }`:** When the `--record` flag is active, only tests marked with `{ record: true }` are executed. Tests without this marker are skipped.
+- **Pattern mismatch:** The `discoverTests` function expects a `RegExp` for its pattern parameter, not a glob string. Ensure you are passing a valid regular expression.
+
+---
+
+## Kubectl Plugin
+
+### Tests Hang on Watch Commands
+
+Kubectl watch commands (`kubectl get pods -w`) run indefinitely by default. If your test starts a watch process, you must explicitly interrupt it to prevent the test from hanging.
+
+```ts
+test('kubectl watch', async ({ $ }) => {
+  const watch = $({ interactive: true })`kubectl get pods -w`;
+
+  await watch.expect('Running');
+  await watch.interrupt(); // Send Ctrl+C to stop the watch
+  await watch.wait();
+});
+```
+
+### KUBECONFIG Not Set
+
+Ensure the `KUBECONFIG` environment variable is set before running kubectl-related tests. Without it, kubectl cannot connect to your cluster.
+
+```bash
+export KUBECONFIG=/path/to/your/kubeconfig
+repterm tests/kubectl/
+```

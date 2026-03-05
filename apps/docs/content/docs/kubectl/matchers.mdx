@@ -1,0 +1,104 @@
+---
+title: Kubectl Matchers
+description: Custom assertion matchers for Kubernetes resources.
+---
+
+## Overview
+
+The kubectl plugin registers custom matchers for use with `expect()`. These matchers work with [resource wrappers](/docs/kubectl/resource-wrappers) to provide type-safe Kubernetes assertions.
+
+```ts
+import { expect } from 'repterm';
+import { pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
+
+await expect(pod(k, 'nginx')).toBeRunning();
+await expect(deployment(k, 'app')).toHaveReadyReplicas(3);
+```
+
+## Result Matchers
+
+For results returned by kubectl operations (apply, delete, patch, scale, label, wait):
+
+| Matcher | Description |
+| --- | --- |
+| `toBeSuccessful()` | Assert the operation completed successfully |
+
+```ts
+const result = await k.apply(yaml);
+await expect(result).toBeSuccessful();
+```
+
+## Existence Matchers
+
+| Matcher | Description |
+| --- | --- |
+| `toExistInCluster()` | Assert the resource exists in the cluster |
+| `toNotExistInCluster()` | Assert the resource does not exist |
+
+```ts
+await expect(pod(k, 'nginx')).toExistInCluster();
+await expect(pod(k, 'old-pod')).toNotExistInCluster();
+```
+
+## Pod Status Matchers
+
+| Matcher | Description |
+| --- | --- |
+| `toBeRunning(timeout?)` | Assert pod is in Running phase. Optional timeout for polling. |
+| `toHavePhase(phase)` | Assert pod has a specific phase |
+
+```ts
+await expect(pod(k, 'nginx')).toBeRunning();
+await expect(pod(k, 'nginx')).toBeRunning(30_000); // With polling timeout
+await expect(pod(k, 'job-pod')).toHavePhase('Succeeded');
+```
+
+## Replica Matchers
+
+| Matcher | Description |
+| --- | --- |
+| `toHaveReplicas(count)` | Assert desired replica count |
+| `toHaveReadyReplicas(count)` | Assert ready replica count |
+| `toHaveAvailableReplicas(count)` | Assert available replica count |
+
+```ts
+await expect(deployment(k, 'app')).toHaveReplicas(3);
+await expect(deployment(k, 'app')).toHaveReadyReplicas(3);
+await expect(deployment(k, 'app')).toHaveAvailableReplicas(3);
+```
+
+## Condition Matchers
+
+| Matcher | Description |
+| --- | --- |
+| `toBeAvailable()` | Assert the `Available` condition is `True` |
+| `toHaveCondition(type, status)` | Assert a specific condition type and status |
+
+```ts
+await expect(deployment(k, 'app')).toBeAvailable();
+await expect(deployment(k, 'app')).toHaveCondition('Progressing', 'True');
+```
+
+## Label and Annotation Matchers
+
+| Matcher | Description |
+| --- | --- |
+| `toHaveLabel(key, value?)` | Assert label exists. Value is optional (checks key only if omitted). |
+| `toHaveAnnotation(key, value?)` | Assert annotation exists. Value is optional. |
+
+```ts
+await expect(pod(k, 'nginx')).toHaveLabel('app', 'nginx');
+await expect(pod(k, 'nginx')).toHaveLabel('managed-by'); // Key exists, any value
+await expect(pod(k, 'nginx')).toHaveAnnotation('description', 'web server');
+```
+
+## Status Field Matchers
+
+| Matcher | Description |
+| --- | --- |
+| `toHaveStatusField(path, value)` | Assert a status field value. Supports dot notation for nested paths. |
+
+```ts
+await expect(pod(k, 'nginx')).toHaveStatusField('phase', 'Running');
+await expect(pod(k, 'nginx')).toHaveStatusField('containerStatuses.0.ready', true);
+```

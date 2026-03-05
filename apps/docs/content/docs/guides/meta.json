@@ -1,0 +1,11 @@
+{
+  "title": "Guides",
+  "pages": [
+    "writing-tests",
+    "interactive-commands",
+    "recording",
+    "multi-terminal",
+    "fixtures-and-hooks",
+    "debugging"
+  ]
+}

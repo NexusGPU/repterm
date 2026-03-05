@@ -1,0 +1,78 @@
+---
+title: Terminal API
+description: Reference for the $ tagged template, PTYProcess, and Terminal methods.
+---
+
+## $ Tagged Template
+
+The primary way to run commands. Interpolated values are automatically shell-escaped.
+
+```ts
+// Basic usage
+const result = await $`echo hello`;
+console.log(result.code, result.stdout, result.stderr);
+
+// Interpolation (values are shell-escaped)
+const name = "hello world";
+await $`echo ${name}`;  // runs: echo 'hello world'
+
+// Skip escaping with raw()
+import { raw } from 'repterm';
+await $`echo ${raw('already-safe')}`;
+
+// With options
+await $({ timeout: 5000 })`echo hello`;
+await $({ silent: true })`kubectl get pod -o json`;
+await $({ promptDetection: 'none' })`tail -f /var/log/syslog`;
+```
+
+## PTYProcess
+
+When using `$` or `terminal.run()`, you get a `PTYProcess` that can be awaited for a `CommandResult` or used as a controller for interactive commands.
+
+### Awaiting for Result
+
+```ts
+const result = await $`echo hello`;
+// result: CommandResult { code, stdout, stderr, output, duration, command, successful }
+```
+
+### Interactive Control
+
+```ts
+const proc = $({ interactive: true, timeout: 30_000 })`python3`;
+
+await proc.expect('>>>');           // Wait for text to appear
+await proc.send('print("hi")\n');  // Send input (appends newline)
+await proc.sendRaw('data');         // Send raw input (no newline)
+await proc.start();                 // Start without waiting for finish
+await proc.interrupt();             // Send Ctrl+C
+const result = await proc.wait();   // Wait for completion
+```
+
+### PTYProcess Methods
+
+| Method | Description |
+| --- | --- |
+| `expect(text)` | Wait for text to appear in the terminal output |
+| `send(text)` | Send input to the process (appends newline) |
+| `sendRaw(data)` | Send raw data without appending newline |
+| `start()` | Start the process without waiting for completion |
+| `interrupt()` | Send Ctrl+C (SIGINT) to the process |
+| `wait()` | Wait for the process to complete, returns `CommandResult` |
+
+## Terminal Methods
+
+The `terminal` object provides lower-level control over the terminal session:
+
+| Method | Description |
+| --- | --- |
+| `terminal.run(command, options?)` | Execute a command, returns `PTYProcess` |
+| `` terminal.$`cmd` `` | Tagged template bound to this terminal |
+| `terminal.send(text)` | Send input directly to the terminal |
+| `terminal.waitForText(text, options?)` | Wait for text to appear. Options: `{ timeout?, stripAnsi? }` |
+| `terminal.snapshot()` | Get a snapshot of current terminal output |
+| `terminal.create()` | Create a new terminal (splits pane in recording mode) |
+| `terminal.close()` | Close this terminal session |
+| `terminal.isRecording()` | Check if in recording mode |
+| `terminal.isPtyMode()` | Check if in PTY mode (recording or PTY-only) |

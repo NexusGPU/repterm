@@ -4,7 +4,8 @@
   "workspaces": [
     "packages/*",
     "packages/repterm/examples",
-    "packages/plugin-kubectl/examples"
+    "packages/plugin-kubectl/examples",
+    "apps/*"
   ],
   "scripts": {
     "build": "bun run --filter '*' build",
@@ -26,6 +27,8 @@
     "repterm": "bun run packages/repterm/src/cli/index.ts",
     "example": "bun run packages/repterm/src/cli/index.ts packages/repterm/examples",
     "example:record": "bun run packages/repterm/src/cli/index.ts --record packages/repterm/examples",
+    "docs:dev": "bun run --filter docs dev",
+    "docs:build": "bun run --filter docs build",
     "release": "semantic-release",
     "build:plugin-api": "bun run --filter repterm-api build",
     "build:plugin-kubectl": "bun run --filter @nexusgpu/repterm-plugin-kubectl build"

@@ -1,0 +1,52 @@
+---
+title: Kubectl Plugin Overview
+description: Kubernetes-specific testing tools for Repterm.
+---
+
+## What is the Kubectl Plugin?
+
+`@nexusgpu/repterm-plugin-kubectl` provides comprehensive Kubernetes testing capabilities for Repterm. It wraps the `kubectl` CLI with a type-safe API designed for testing.
+
+## Key Features
+
+- **Command execution** — Run kubectl commands programmatically with parsed output
+- **Resource waiting** — Wait for pods to be running, deployments to be available, or custom conditions
+- **Custom assertions** — Assert on resource existence, status, replicas, labels, and conditions
+- **Lifecycle management** — Apply, delete, scale, rollout, and patch resources
+- **Port forwarding** — Forward ports with automatic cleanup
+- **Log tailing and exec** — Tail pod logs and execute commands inside containers
+- **Type-safe resource wrappers** — `pod()`, `deployment()`, `service()`, and more
+
+## Quick Example
+
+```ts
+import { defineConfig, createTestWithPlugins, expect } from 'repterm';
+import { kubectlPlugin, pod, deployment } from '@nexusgpu/repterm-plugin-kubectl';
+
+const config = defineConfig({
+  plugins: [kubectlPlugin({ namespace: 'default' })] as const,
+});
+
+const test = createTestWithPlugins(config);
+
+test('deploy and verify', async (ctx) => {
+  const k = ctx.plugins.kubectl;
+
+  // Apply a manifest
+  await k.apply(manifestYaml);
+
+  // Wait for the pod to be running
+  await k.waitForPod('demo', 'Running', 60_000);
+
+  // Assert on resource state
+  await expect(pod(k, 'demo')).toBeRunning();
+  await expect(deployment(k, 'demo')).toHaveReadyReplicas(2);
+});
+```
+
+## Next Steps
+
+- [Setup](/docs/kubectl/setup) — Install and configure the plugin
+- [API Reference](/docs/kubectl/api-reference) — Complete method documentation
+- [Matchers](/docs/kubectl/matchers) — Custom assertion matchers
+- [Resource Wrappers](/docs/kubectl/resource-wrappers) — Type-safe resource references

@@ -1,0 +1,100 @@
+---
+title: Resource Wrappers
+description: Type-safe resource references for use with kubectl matchers.
+---
+
+## Overview
+
+Resource wrappers create typed references to Kubernetes resources. They are used with [matchers](/docs/kubectl/matchers) to write expressive assertions.
+
+```ts
+import { pod, deployment, service } from '@nexusgpu/repterm-plugin-kubectl';
+
+const k = ctx.plugins.kubectl;
+
+await expect(pod(k, 'nginx')).toBeRunning();
+await expect(deployment(k, 'app')).toHaveReadyReplicas(3);
+await expect(service(k, 'my-svc')).toExistInCluster();
+```
+
+## Standard Resource Wrappers
+
+| Wrapper | Usage | Description |
+| --- | --- | --- |
+| `pod(kubectl, name)` | `pod(k, 'nginx')` | Pod reference |
+| `deployment(kubectl, name)` | `deployment(k, 'app')` | Deployment reference |
+| `service(kubectl, name)` | `service(k, 'svc')` | Service reference |
+| `statefulset(kubectl, name)` | `statefulset(k, 'db')` | StatefulSet reference |
+| `job(kubectl, name)` | `job(k, 'batch')` | Job reference |
+| `configmap(kubectl, name)` | `configmap(k, 'cfg')` | ConfigMap reference |
+| `secret(kubectl, name)` | `secret(k, 'creds')` | Secret reference |
+
+## Generic Wrappers
+
+For any resource type not covered by standard wrappers:
+
+| Wrapper | Usage | Description |
+| --- | --- | --- |
+| `resource(kubectl, type, name)` | `resource(k, 'cronjob', 'job')` | Any resource type |
+| `crd(kubectl, type, name)` | `crd(k, 'myresource', 'inst')` | Custom Resource Definition |
+
+```ts
+import { resource, crd } from '@nexusgpu/repterm-plugin-kubectl';
+
+await expect(resource(k, 'cronjob', 'nightly-backup')).toExistInCluster();
+await expect(crd(k, 'certificates', 'my-cert')).toExistInCluster();
+```
+
+## CRD Helpers
+
+Built-in helpers for Tensor Fusion custom resources:
+
+| Wrapper | Usage |
+| --- | --- |
+| `gpupool(kubectl, name)` | GPU pool resource |
+| `gpu(kubectl, name)` | GPU resource |
+| `tensorfusionworkload(kubectl, name)` | TensorFusion workload |
+| `tensorfusionconnection(kubectl, name)` | TensorFusion connection |
+
+```ts
+import { gpupool, gpu } from '@nexusgpu/repterm-plugin-kubectl';
+
+await expect(gpupool(k, 'default-pool')).toExistInCluster();
+await expect(gpu(k, 'gpu-0')).toHaveLabel('pool', 'default-pool');
+```
+
+## Complete Example
+
+```ts
+import { defineConfig, createTestWithPlugins, expect } from 'repterm';
+import {
+  kubectlPlugin,
+  pod,
+  deployment,
+  service,
+  configmap,
+} from '@nexusgpu/repterm-plugin-kubectl';
+
+const config = defineConfig({
+  plugins: [kubectlPlugin({ namespace: 'test' })] as const,
+});
+
+const test = createTestWithPlugins(config);
+
+test('full deployment verification', async (ctx) => {
+  const k = ctx.plugins.kubectl;
+
+  // Verify all resources exist
+  await expect(configmap(k, 'app-config')).toExistInCluster();
+  await expect(deployment(k, 'app')).toExistInCluster();
+  await expect(service(k, 'app-svc')).toExistInCluster();
+
+  // Verify deployment state
+  await expect(deployment(k, 'app')).toHaveReadyReplicas(3);
+  await expect(deployment(k, 'app')).toBeAvailable();
+
+  // Verify pod state
+  await expect(pod(k, 'app-0')).toBeRunning();
+  await expect(pod(k, 'app-0')).toHaveLabel('app', 'my-app');
+});
+```

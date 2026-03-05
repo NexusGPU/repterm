@@ -1,0 +1,10 @@
+{
+  "title": "Kubectl Plugin",
+  "pages": [
+    "overview",
+    "setup",
+    "api-reference",
+    "matchers",
+    "resource-wrappers"
+  ]
+}

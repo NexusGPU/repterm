@@ -1,0 +1,114 @@
+---
+title: Recording Mode
+description: How to use recording mode to create terminal session recordings
+---
+
+## Overview
+
+Repterm can produce [asciinema](https://asciinema.org/)-compatible `.cast` files from your tests, turning them into replayable terminal session recordings. This is useful for generating demos, documentation, and visual regression artifacts.
+
+## Prerequisites
+
+Recording mode requires two external tools to be installed:
+
+- **asciinema** -- terminal session recorder
+- **tmux** -- terminal multiplexer
+
+Install them with your system package manager:
+
+```bash
+# macOS
+brew install asciinema tmux
+
+# Ubuntu / Debian
+sudo apt-get install asciinema tmux
+```
+
+## Marking Tests for Recording
+
+Use the `{ record: true }` option to mark individual tests or entire suites as recordable.
+
+### Single Test
+
+```ts
+test('demo', { record: true }, async ({ $ }) => {
+  await $`pwd`;
+});
+```
+
+### Entire Suite
+
+```ts
+describe('demo suite', { record: true }, () => {
+  test('step 1', async ({ $ }) => {
+    await $`ls -la`;
+  });
+
+  test('step 2', async ({ $ }) => {
+    await $`cat README.md`;
+  });
+});
+```
+
+## Running in Recording Mode
+
+Use the `--record` flag to activate recording:
+
+```bash
+repterm --record tests/
+```
+
+### Behavior
+
+| Scenario | What happens |
+| --- | --- |
+| `{ record: true }` **without** `--record` flag | Tests run in PTY-only mode. No `.cast` file is produced. |
+| `{ record: true }` **with** `--record` flag | Tests run and produce `.cast` files. |
+| No `{ record: true }` **with** `--record` flag | Tests are skipped. Only recorded tests execute. |
+
+## Step Options for Recording
+
+When recording, you can control the pacing of individual steps using options on `test.step`:
+
+```ts
+await test.step('verify', { showStepTitle: true, pauseAfter: 1000 }, async () => {
+  const result = await $`ls /tmp/demo`;
+  await expect(result).toSucceed();
+});
+```
+
+| Option | Description |
+| --- | --- |
+| `showStepTitle` | Display the step name in the recording output. |
+| `pauseAfter` | Pause for the specified number of milliseconds after the step completes. |
+
+## Command Recording Options
+
+Fine-tune how commands appear in recordings by passing options:
+
+```ts
+await $({ typingSpeed: 50, pauseAfter: 2000 })`echo "Hello, world!"`;
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `typingSpeed` | `80` | Milliseconds per character when simulating typing. Set to `0` for instant output. |
+| `pauseAfter` | `0` | Milliseconds to pause after the command finishes. |
+| `pauseBefore` | `0` | Milliseconds to pause before the command starts. |
+
+## Multi-Terminal Recording
+
+In recording mode, `terminal.create()` splits the tmux pane, allowing you to demonstrate multi-terminal workflows in a single recording.
+
+```ts
+describe('multi-terminal demo', { record: true }, () => {
+  test('two panes', async ({ $, terminal }) => {
+    const terminal2 = await terminal.create();
+
+    await $`echo "left pane"`;
+    await terminal2.$`echo "right pane"`;
+  });
+});
+```
+
+See the [Multi-Terminal Testing](/docs/guides/multi-terminal) guide for more details.

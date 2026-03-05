@@ -1,0 +1,47 @@
+---
+title: Architecture
+description: Understand Repterm's layered architecture and end-to-end test execution flow.
+---
+
+## Layered Design
+
+Repterm follows a four-layer architecture, with each layer having clear responsibilities:
+
+```
+CLI
+  → Runner
+    → API
+    → Terminal
+```
+
+### CLI Layer
+
+Parses command-line arguments, orchestrates the test run, and reports results. Includes the reporter for streaming output and the plugin manager CLI.
+
+### Runner Layer
+
+Handles test discovery, filtering, execution scheduling, and artifact management. Supports both single-worker and multi-worker parallel execution.
+
+### API Layer
+
+Provides the test DSL (`test`, `describe`, `expect`, hooks) and the plugin system (`definePlugin`, `defineConfig`, `createTestWithPlugins`).
+
+### Terminal Layer
+
+Manages terminal sessions, the `$` tagged template for command execution, recording with asciinema/tmux, and shell integration (OSC 133 prompt detection).
+
+## Key Dependencies
+
+- **CLI** calls Loader, Filter, Runner, and Scheduler
+- **Runner** calls Hooks, Terminal, Artifacts, and Reporter
+- **Terminal** uses Dollar (`$`), Session, Recorder, and ShellIntegration
+- **Plugin system** feeds into Test API → Runner (with lifecycle hooks)
+
+## End-to-End Flow
+
+1. CLI parses args → `discoverTests(paths)` → `loadTestFiles(files)` → Registry registers suites and tests
+2. `filterSuites(allSuites, recordMode)` applies the `--record` filter
+3. Single worker: `runAllSuites(...)` / Multi worker: `createScheduler(...).run(...)`
+4. Runner notifies Reporter (`onTestStart` → `onTestResult` → `onRunComplete`)
+5. Runner creates a Terminal per test (choosing recording, PTY-only, or spawn mode)
+6. Lifecycle per test: `beforeEach` → test function → `afterEach`

@@ -1,0 +1,59 @@
+---
+title: Shell Integration
+description: How Repterm detects prompts and captures output using OSC 133 and fallback layers.
+---
+
+## Three-Layer Prompt Detection
+
+Repterm uses a layered prompt detection system that automatically selects the best available method:
+
+| Layer | Method | Precision | Exit Code |
+| --- | --- | --- | --- |
+| 1 | **OSC 133** (FinalTerm standard) | Exact semantic markers (A/B/C/D) | Captured from D marker |
+| 2 | **Sentinel** unique marker | Unique string impossible in normal output | Via sentinel parsing |
+| 3 | **Enhanced regex** | Pattern-based prompt matching | Not available |
+
+The system tries each layer in order and uses the best one available.
+
+## Per-Command Override
+
+You can override prompt detection per command via `RunOptions.promptDetection`:
+
+```ts
+// Use default auto-detection
+await $`echo hello`;
+
+// Force OSC 133 only
+await $({ promptDetection: 'osc133' })`echo hello`;
+
+// Force sentinel marker
+await $({ promptDetection: 'sentinel' })`echo hello`;
+
+// Force regex matching
+await $({ promptDetection: 'regex' })`echo hello`;
+
+// Skip prompt detection (for long-running or streaming commands)
+await $({ promptDetection: 'none' })`tail -f /var/log/syslog`;
+```
+
+## Shell Integration Configuration
+
+Configure shell integration through `TerminalConfig`:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `enabled` | `true` | Inject shell integration markers |
+| `sentinelFallback` | `true` | Enable sentinel layer if OSC 133 is not available |
+| `shell` | auto-detect | Custom shell path override |
+
+## Supported Shells
+
+| Shell | Integration Method |
+| --- | --- |
+| **Bash** | `PROMPT_COMMAND` + `DEBUG` trap |
+| **Zsh** | `precmd_functions` + `preexec_functions` |
+| Other shells | Falls back to regex detection (Layer 3) |
+
+## Tmux Passthrough
+
+In recording mode, OSC 133 markers are forwarded through DCS passthrough to ensure prompt detection works inside tmux sessions. This is configured automatically with `set-option allow-passthrough on`.

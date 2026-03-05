@@ -1,0 +1,117 @@
+---
+title: Multi-Terminal Testing
+description: How to test scenarios involving multiple terminals
+---
+
+## Overview
+
+Some workflows require multiple terminal sessions -- for example, running a server in one terminal and a client in another, or verifying that two processes can communicate through shared files or IPC mechanisms. Repterm supports creating additional terminal instances within a single test.
+
+## Creating Additional Terminals
+
+Use `terminal.create()` to spin up a new terminal session. The new terminal has its own `$` helper for running commands.
+
+```ts
+describe('multi terminal', { record: true }, () => {
+  test('share file between terminals', async ({ $, terminal }) => {
+    const terminal2 = await terminal.create();
+
+    await $`echo message > /tmp/shared.txt`;
+    const result = await terminal2.$`cat /tmp/shared.txt`;
+
+    await expect(result).toContainInOutput('message');
+  });
+});
+```
+
+## Behavior by Mode
+
+| Mode | `terminal.create()` behavior |
+| --- | --- |
+| **Recording mode** (`--record`) | Splits the tmux pane, so both terminals appear side by side in the recording. |
+| **Non-recording mode** | Creates an independent terminal session. Tests still work, but there is no visual split. |
+
+## Use Cases
+
+### Client-Server Interactions
+
+Test a server and client running simultaneously:
+
+```ts
+test('client-server', async ({ $, terminal }) => {
+  const serverTerminal = terminal;
+  const clientTerminal = await terminal.create();
+
+  // Start server in the first terminal
+  const server = serverTerminal.run('python3 -m http.server 8080', {
+    interactive: true,
+    timeout: 10_000,
+  });
+  await server.expect('Serving HTTP');
+
+  // Hit the server from the second terminal
+  const result = await clientTerminal.$`curl -s http://localhost:8080`;
+  await expect(result).toSucceed();
+
+  // Clean up
+  await server.interrupt();
+  await server.wait();
+});
+```
+
+### Verifying IPC
+
+Test that two processes can communicate through a named pipe or socket:
+
+```ts
+test('named pipe communication', async ({ $, terminal }) => {
+  const writer = terminal;
+  const reader = await terminal.create();
+
+  await $`mkfifo /tmp/test-pipe`;
+
+  // Start reader in background (it blocks until data arrives)
+  const readProc = reader.run('cat /tmp/test-pipe', {
+    interactive: true,
+    timeout: 5_000,
+  });
+
+  // Write from the other terminal
+  await writer.$`echo "hello via pipe" > /tmp/test-pipe`;
+
+  await readProc.expect('hello via pipe');
+  await readProc.wait();
+
+  await $`rm /tmp/test-pipe`;
+});
+```
+
+### Multi-Process Workflows
+
+Test scenarios where multiple processes must coordinate:
+
+```ts
+test('watch and trigger', async ({ $, terminal }) => {
+  const watcher = await terminal.create();
+
+  // Set up a file watcher in the second terminal
+  const watchProc = watcher.run('fswatch /tmp/watched-dir', {
+    interactive: true,
+    timeout: 10_000,
+  });
+
+  // Trigger a change from the first terminal
+  await $`mkdir -p /tmp/watched-dir`;
+  await $`touch /tmp/watched-dir/new-file.txt`;
+
+  await watchProc.expect('new-file.txt');
+  await watchProc.interrupt();
+  await watchProc.wait();
+});
+```
+
+## Tips
+
+- **Combine with recording mode** for visual demonstrations of multi-terminal workflows. Mark the suite or test with `{ record: true }` and run with `--record`.
+- **Always clean up resources** (servers, temp files, pipes) at the end of your test to avoid conflicts between test runs.
+- **Use timeouts on interactive processes** to prevent tests from hanging if a process does not produce expected output.

@@ -1,0 +1,46 @@
+---
+title: Repterm
+description: A terminal-first testing framework for CLI and TUI applications, running tests in real PTY environments.
+---
+
+Repterm is a terminal-first testing framework designed for CLI and TUI applications. Unlike traditional test runners that mock terminal behavior, Repterm runs every test inside a real PTY (pseudo-terminal) environment, giving you accurate results that reflect how your application actually behaves in a terminal.
+
+## Packages
+
+The Repterm monorepo ships three packages:
+
+| Package | Description |
+| --- | --- |
+| `repterm` | Core CLI test runner with built-in assertions and recording |
+| `repterm-api` | Plugin API for building third-party plugins |
+| `@nexusgpu/repterm-plugin-kubectl` | First-party Kubernetes testing plugin |
+
+## Key Features
+
+- **Real PTY testing** -- Tests execute in genuine pseudo-terminal sessions, not simulated environments. What you test is what your users experience.
+- **Recording mode** -- Capture terminal sessions as asciinema `.cast` files using tmux, perfect for documentation, demos, and visual regression.
+- **Parallel execution** -- Run test suites across multiple workers to cut down execution time on large test suites.
+- **Plugin system** -- Extend Repterm with custom methods, context, and lifecycle hooks through a type-safe plugin API.
+- **Interactive command testing** -- Send keystrokes, wait for prompts, and assert on live terminal output with `expect` and `send`.
+- **Multi-terminal support** -- Spawn additional terminal panes within a single test, with automatic tmux pane splitting in recording mode.
+
+## Quick Example
+
+```ts
+import { test, expect } from 'repterm';
+
+test('echo command', async ({ $ }) => {
+  const result = await $`echo "Hello, Repterm!"`;
+  expect(result).toSucceed();
+  expect(result).toHaveStdout('Hello, Repterm!');
+});
+```
+
+The `$` tagged template is the primary API for running commands. It returns a `CommandResult` with structured access to exit code, stdout, stderr, combined output, and duration.
+
+## Next Steps
+
+- [Installation](/docs/installation) -- Set up Repterm and system dependencies
+- [Getting Started](/docs/getting-started) -- Write and run your first test in under 5 minutes
+- [Architecture](/docs/concepts/architecture) -- Understand how the layers fit together
+- [API Reference](/docs/api/test-dsl) -- Full DSL and assertion reference

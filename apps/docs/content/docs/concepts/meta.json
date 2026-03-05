@@ -1,0 +1,9 @@
+{
+  "title": "Core Concepts",
+  "pages": [
+    "architecture",
+    "terminal-modes",
+    "shell-integration",
+    "runner-pipeline"
+  ]
+}

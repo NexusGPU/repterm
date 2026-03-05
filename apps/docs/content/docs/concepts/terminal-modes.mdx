@@ -1,0 +1,68 @@
+---
+title: Terminal Modes
+description: Understand the four execution paths and how Repterm decides which mode to use.
+---
+
+## Four Execution Paths
+
+Repterm supports four different terminal execution modes, selected automatically based on test options and CLI flags:
+
+| Mode | Trigger | Execution | Notes |
+| --- | --- | --- | --- |
+| **Spawn** (default) | `$\`cmd\`` or `terminal.run()`, non-interactive | `Bun.spawn` | Exact exit code, separate stdout/stderr |
+| **PTY-only** | Test has `{ record: true }`, CLI without `--record` | PTY | No `.cast` file, exit code often `-1` |
+| **Recording** | CLI `--record` + test `{ record: true }` | asciinema + tmux + PTY | Produces `.cast` file, typing animation |
+| **Interactive** | `{ interactive: true }` option | PTY | `expect`/`send`/`interrupt` control |
+
+### Forcing Spawn Mode
+
+Use `silent: true` to force `Bun.spawn` even in PTY or recording mode. This is useful when you need reliable exit codes or clean JSON output:
+
+```ts
+await $({ silent: true })`kubectl get pod -o json`;
+```
+
+## Record Filter Behavior
+
+The `--record` flag controls which tests run:
+
+- **Without `--record`**: All tests run, including those marked `{ record: true }`. Record-marked tests run in PTY-only mode.
+- **With `--record`**: Only tests marked `{ record: true }` run, in full recording mode.
+
+## CommandResult
+
+Every command execution returns a `CommandResult`:
+
+```ts
+interface CommandResult {
+  code: number;       // Exit code (-1 in PTY/recording)
+  stdout: string;     // Standard output
+  stderr: string;     // Standard error
+  output: string;     // Combined stdout + stderr
+  duration: number;   // Execution time in ms
+  command: string;    // The command that was run
+  successful: boolean; // code === 0
+}
+```
+
+### Assertion Strategy by Mode
+
+| Mode | Exit Code | Recommended Assertion |
+| --- | --- | --- |
+| Spawn | Reliable | `toHaveExitCode()`, `toSucceed()`, `toFail()` |
+| PTY/Recording | Often `-1` | `toContainInOutput()`, `toHaveStdout()` |
+| Interactive | Often `-1` | `toContainInOutput()`, or use `proc.expect()` |
+
+For reliable exit codes in any mode, use `$({ silent: true })`.
+
+## Multi-Terminal
+
+Create additional terminals with `terminal.create()`:
+
+- **In recording mode**: Splits the tmux pane for side-by-side display
+- **In non-recording mode**: Creates an independent terminal session
+
+```ts
+const terminal2 = await terminal.create();
+const result = await terminal2.$`echo hello`;
+```

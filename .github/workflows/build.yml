@@ -15,11 +15,19 @@ on:
         required: true
         type: boolean
         default: false
+      plugin_version:
+        description: "Plugin version to publish (e.g. 0.2.0)"
+        required: false
+        type: string
       release_repterm_api:
         description: "Release repterm-api"
         required: true
         type: boolean
         default: false
+      repterm_api_version:
+        description: "repterm-api version to publish (e.g. 0.2.0)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -115,7 +123,10 @@ jobs:
       - name: Resolve workspace protocol for npm compatibility
         run: |
           API_VERSION=$(jq -r .version packages/plugin-api/package.json)
-          sed -i "s/\"workspace:\*\"/\"^${API_VERSION}\"/g" packages/repterm/package.json
+          # Replace workspace:* in all package.json files (npm cannot parse bun's workspace protocol)
+          find packages -name package.json -not -path "*/node_modules/*" -exec sed -i "s/\"workspace:\*\"/\"^${API_VERSION}\"/g" {} +
+          # Remove workspaces field from root package.json so npm doesn't try to process the workspace graph
+          jq 'del(.workspaces)' package.json > package.json.tmp && mv package.json.tmp package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -232,9 +243,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Configure npm auth
-        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
+        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Set plugin version
+        if: inputs.plugin_version != ''
+        run: cd packages/plugin-kubectl && npm version ${{ inputs.plugin_version }} --no-git-tag-version
 
       - name: Build repterm-api package
         run: bun run build:plugin-api
@@ -263,9 +278,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Configure npm auth
-        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
+        run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Set repterm-api version
+        if: inputs.repterm_api_version != ''
+        run: cd packages/plugin-api && npm version ${{ inputs.repterm_api_version }} --no-git-tag-version
 
       - name: Build repterm-api package
         run: bun run build:plugin-api

@@ -1,0 +1,113 @@
+---
+title: Hooks
+description: Reference for test lifecycle hooks and lazy fixtures.
+---
+
+## Overview
+
+Repterm provides four lifecycle hooks: `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`. `beforeEach`/`afterEach` hooks are **named fixtures** — they require a name and only execute when a test explicitly requests the fixture by name.
+
+```ts
+import { test, describe, expect, beforeEach, afterEach, beforeAll, afterAll } from 'repterm';
+```
+
+## beforeEach / afterEach
+
+Run before and after each test in the suite. Both require a **name** parameter. Named hooks are **lazy** — they only execute if the test function requests the fixture by name in its destructured parameters.
+
+```ts
+describe('fixtures', () => {
+  // This only runs if a test requests 'tmpDir'
+  beforeEach('tmpDir', async () => {
+    const dir = `/tmp/repterm-${Date.now()}`;
+    await $`mkdir -p ${dir}`;
+    return dir;  // The return value becomes the fixture
+  });
+
+  // Cleanup runs only if the fixture was created
+  afterEach('tmpDir', async (tmpDir) => {
+    await $`rm -rf ${tmpDir}`;
+  });
+
+  // 'tmpDir' fixture runs because it's requested here
+  test('uses fixture', async ({ $, tmpDir }) => {
+    await $`touch ${tmpDir}/a.txt`;
+    const result = await $`ls ${tmpDir}`;
+    await expect(result).toContainInOutput('a.txt');
+  });
+
+  // 'tmpDir' fixture does NOT run for this test
+  test('no fixture', async ({ $ }) => {
+    await $`echo no fixture needed`;
+  });
+});
+```
+
+## beforeAll / afterAll
+
+Run once before/after all tests in the suite. Can return shared state. Support both anonymous and named forms.
+
+### Anonymous
+
+```ts
+describe('shared state', () => {
+  beforeAll(async () => {
+    // Return value becomes shared context
+    return { rootDir: '/tmp/repterm-suite' };
+  });
+
+  afterAll(async ({ rootDir }) => {
+    await $`rm -rf ${rootDir}`;
+  });
+
+  // Access shared state via destructuring
+  test('uses shared', async ({ $, rootDir }) => {
+    await $`ls ${rootDir}`;
+  });
+});
+```
+
+### Named
+
+```ts
+describe('named beforeAll', () => {
+  beforeAll('db', async () => {
+    // Setup database, return connection
+    return { host: 'localhost', port: 5432 };
+  });
+
+  afterAll('db', async (db) => {
+    // Cleanup
+  });
+});
+```
+
+## Complete Example
+
+Combining all hooks with named fixtures:
+
+```ts
+describe('full lifecycle', () => {
+  beforeAll(async () => ({ rootDir: '/tmp/repterm-suite' }));
+
+  beforeEach('tmpDir', async ({ rootDir }) => {
+    const tmpDir = `${rootDir}/${Date.now()}`;
+    await $`mkdir -p ${tmpDir}`;
+    return tmpDir;
+  });
+
+  afterEach('tmpDir', async (tmpDir) => {
+    await $`rm -rf ${tmpDir}`;
+  });
+
+  afterAll(async ({ rootDir }) => {
+    await $`rm -rf ${rootDir}`;
+  });
+
+  test('uses fixture', async ({ $, tmpDir, rootDir }) => {
+    await $`touch ${tmpDir}/a.txt`;
+    const result = await $`ls ${tmpDir}`;
+    await expect(result).toContainInOutput('a.txt');
+  });
+});
+```
