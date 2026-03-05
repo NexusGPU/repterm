@@ -43,14 +43,14 @@
     },
     "packages/plugin-api": {
       "name": "repterm-api",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "devDependencies": {
         "typescript": "^5.3.0",
       },
     },
     "packages/plugin-kubectl": {
       "name": "@nexusgpu/repterm-plugin-kubectl",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "dependencies": {
         "repterm-api": "workspace:*",
       },
@@ -73,7 +73,7 @@
     },
     "packages/repterm": {
       "name": "repterm",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "bin": {
         "repterm": "./dist/cli/index.js",
       },
