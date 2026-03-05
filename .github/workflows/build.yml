@@ -15,22 +15,15 @@ on:
         required: true
         type: boolean
         default: false
-      plugin_version:
-        description: "Plugin version to publish (e.g. 0.2.0)"
-        required: false
-        type: string
       release_repterm_api:
         description: "Release repterm-api"
         required: true
         type: boolean
         default: false
-      repterm_api_version:
-        description: "repterm-api version to publish (e.g. 0.2.0)"
-        required: false
-        type: string
-
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 env:
   R2_BUCKET: 'cuda-fusion-libs'
@@ -247,10 +240,6 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Set plugin version
-        if: inputs.plugin_version != ''
-        run: cd packages/plugin-kubectl && npm version ${{ inputs.plugin_version }} --no-git-tag-version
-
       - name: Build repterm-api package
         run: bun run build:plugin-api
 
@@ -281,10 +270,6 @@ jobs:
         run: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Set repterm-api version
-        if: inputs.repterm_api_version != ''
-        run: cd packages/plugin-api && npm version ${{ inputs.repterm_api_version }} --no-git-tag-version
 
       - name: Build repterm-api package
         run: bun run build:plugin-api
