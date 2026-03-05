@@ -112,6 +112,11 @@ jobs:
       - name: Build repterm package
         run: bun run build:repterm
 
+      - name: Resolve workspace protocol for npm compatibility
+        run: |
+          API_VERSION=$(jq -r .version packages/plugin-api/package.json)
+          sed -i "s/\"workspace:\*\"/\"^${API_VERSION}\"/g" packages/repterm/package.json
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
