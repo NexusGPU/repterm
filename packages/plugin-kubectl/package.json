@@ -1,6 +1,6 @@
 {
   "name": "@nexusgpu/repterm-plugin-kubectl",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Kubernetes plugin for repterm - provides kubectl testing utilities",
   "type": "module",
   "main": "./dist/index.js",

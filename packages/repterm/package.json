@@ -1,6 +1,6 @@
 {
   "name": "repterm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI/TUI test framework with Playwright-style API",
   "type": "module",
   "bin": {
