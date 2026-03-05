@@ -1,0 +1,112 @@
+---
+title: Creating Plugins
+description: Step-by-step guide to building your own Repterm plugin.
+---
+
+## Basic Plugin
+
+Create a plugin with `definePlugin()`:
+
+```ts
+import { definePlugin, defineConfig, createTestWithPlugins } from 'repterm';
+
+const tracePlugin = definePlugin('trace', () => ({
+  methods: {
+    mark: async (name: string) => {
+      await Bun.write('/tmp/trace.log', `${name}\n`);
+    },
+  },
+  context: {
+    traceEnabled: true,
+  },
+}));
+```
+
+## Register and Use
+
+Use `defineConfig()` to register plugins, then `createTestWithPlugins()` to create a test function:
+
+```ts
+const config = defineConfig({
+  plugins: [tracePlugin] as const,
+});
+
+const test = createTestWithPlugins(config);
+
+test('plugin test', async (ctx) => {
+  await ctx.plugins.trace.mark('started');
+  await expect(ctx.traceEnabled).toBe(true);
+});
+```
+
+The `as const` assertion is required for full type inference of plugin methods and context.
+
+## Adding Lifecycle Hooks
+
+Hooks let your plugin run code at key points during test execution:
+
+```ts
+const loggerPlugin = definePlugin('logger', () => ({
+  methods: {
+    info: (msg: string) => console.log('[info]', msg),
+  },
+  context: {
+    loggerName: 'default-logger',
+  },
+  hooks: {
+    beforeTest: async (ctx) => {
+      console.log('Test starting...');
+    },
+    afterTest: async (ctx, error?) => {
+      if (error) {
+        console.error('Test failed:', error.message);
+      }
+    },
+    beforeCommand: (command: string) => {
+      console.log('Running:', command);
+      return command; // Return the (optionally modified) command
+    },
+    afterOutput: (output: string) => {
+      return output; // Return the (optionally modified) output
+    },
+  },
+}));
+```
+
+## Suite-Level Plugins
+
+Use `describeWithPlugins()` for suite-level plugin injection:
+
+```ts
+import { describeWithPlugins } from 'repterm';
+
+describeWithPlugins(config, 'my suite', () => {
+  test('case 1', async (ctx) => {
+    await ctx.plugins.trace.mark('case 1');
+  });
+});
+```
+
+## Plugin Development with repterm-api
+
+For publishing third-party plugins, use the `repterm-api` package which provides a minimal API surface without depending on the full Repterm runtime:
+
+```bash
+bun add -d repterm-api
+```
+
+```ts
+import { definePlugin, type PluginContext } from 'repterm-api';
+
+export const myPlugin = definePlugin('myPlugin', (ctx: PluginContext) => ({
+  methods: {
+    run: async () => {
+      const result = await ctx.testContext.terminal.run('my-command');
+      return result.stdout.trim();
+    },
+  },
+  context: {},
+}));
+```
+
+The `repterm-api` package exports types including `MinimalTerminal`, `MinimalTestContext`, `PluginHooks`, and `MatcherResult`.

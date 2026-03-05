@@ -1,0 +1,134 @@
+---
+title: Command Options
+description: Full reference for RunOptions — configure timeout, environment, prompt detection, and more.
+---
+
+## RunOptions
+
+All command execution methods (`$`, `terminal.run()`) accept an options object:
+
+```ts
+interface RunOptions {
+  timeout?: number;
+  env?: Record<string, string>;
+  cwd?: string;
+  interactive?: boolean;
+  silent?: boolean;
+  typingSpeed?: number;
+  pauseAfter?: number;
+  pauseBefore?: number;
+  promptDetection?: 'auto' | 'osc133' | 'sentinel' | 'regex' | 'none';
+}
+```
+
+## Option Reference
+
+### timeout
+
+Command timeout in milliseconds. If the command doesn't complete within this time, it is killed.
+
+- **Default**: `300000` (5 minutes)
+- **Example**: `$({ timeout: 60_000 })\`long-running-cmd\``
+
+### env
+
+Additional environment variables for the command. Merged with the current environment.
+
+```ts
+await $({ env: { NODE_ENV: 'test', DEBUG: '1' } })`node app.js`;
+```
+
+### cwd
+
+Working directory for the command.
+
+```ts
+await $({ cwd: '/tmp/my-project' })`npm test`;
+```
+
+### interactive
+
+Enable PTY mode with `expect`/`send` control for interactive commands.
+
+- **Default**: `false`
+- **Example**: `$({ interactive: true })\`python3\``
+
+When enabled, the returned `PTYProcess` provides `expect()`, `send()`, `sendRaw()`, `interrupt()`, and `wait()` methods.
+
+### silent
+
+Force `Bun.spawn` even in PTY or recording mode. Use this when you need:
+- Reliable exit codes
+- Clean JSON output (no terminal escape sequences)
+- Separate stdout/stderr streams
+
+- **Default**: `false`
+- **Example**: `$({ silent: true })\`kubectl get pod -o json\``
+
+### typingSpeed
+
+Controls character typing speed during recording mode. Each character is typed with this delay between keystrokes.
+
+- **Default**: `80` (ms per character)
+- **`0`**: Instant typing (no animation)
+- **Example**: `$({ typingSpeed: 40 })\`echo "fast typing"\``
+
+Only affects recording mode. Ignored in other modes.
+
+### pauseAfter
+
+Pause after the command completes during recording mode. Useful for letting the viewer see the output before the next command.
+
+- **Default**: none
+- **Example**: `$({ pauseAfter: 2000 })\`echo "wait for it..."\``
+
+Only affects recording mode.
+
+### pauseBefore
+
+Pause before the command starts during recording mode.
+
+- **Default**: none
+- **Example**: `$({ pauseBefore: 1000 })\`echo "dramatic pause"\``
+
+Only affects recording mode.
+
+### promptDetection
+
+Override prompt detection strategy for this command.
+
+| Value | Description |
+| --- | --- |
+| `'auto'` | Best available method (default) |
+| `'osc133'` | Force OSC 133 detection only |
+| `'sentinel'` | Force sentinel marker detection |
+| `'regex'` | Force regex-based detection |
+| `'none'` | Skip prompt detection entirely |
+
+Use `'none'` for long-running or streaming commands where prompt detection is not applicable:
+
+```ts
+await $({ promptDetection: 'none' })`tail -f /var/log/syslog`;
+```
+
+## Usage Examples
+
+```ts
+// Simple command with timeout
+await $({ timeout: 5000 })`echo hello`;
+
+// Silent mode for reliable JSON parsing
+const result = await $({ silent: true })`kubectl get pods -o json`;
+const pods = JSON.parse(result.stdout);
+
+// Interactive command
+const proc = $({ interactive: true, timeout: 30_000 })`python3`;
+await proc.expect('>>>');
+await proc.send('exit()\n');
+
+// Recording with typing animation
+await $({ typingSpeed: 40, pauseAfter: 1000 })`ls -la`;
+
+// Custom environment and working directory
+await $({ env: { PORT: '3000' }, cwd: '/app' })`npm start`;
+```

@@ -1,0 +1,128 @@
+---
+title: Fixtures & Hooks
+description: How to use hooks and lazy fixtures for test setup and teardown
+---
+
+## Overview
+
+Repterm provides lifecycle hooks (`beforeAll`, `afterAll`, `beforeEach`, `afterEach`) for managing test setup and teardown. `beforeEach`/`afterEach` are always **named fixtures** -- a lazy initialization pattern where setup code only runs if a test actually requests the fixture by name.
+
+## Lifecycle Hooks
+
+### `beforeAll` / `afterAll`
+
+Run once before or after all tests in a `describe` block. `beforeAll` can return shared state that is accessible in subsequent hooks and tests.
+
+```ts
+import { test, describe, expect, beforeAll, afterAll } from 'repterm';
+
+describe('suite', () => {
+  beforeAll(async () => {
+    // Create a shared directory for the entire suite
+    const rootDir = '/tmp/repterm-suite';
+    await $`mkdir -p ${rootDir}`;
+    return { rootDir };
+  });
+
+  afterAll(async ({ rootDir }) => {
+    await $`rm -rf ${rootDir}`;
+  });
+
+  test('uses shared dir', async ({ $, rootDir }) => {
+    const result = await $`ls ${rootDir}`;
+    await expect(result).toSucceed();
+  });
+});
+```
+
+### `beforeEach` / `afterEach`
+
+Run before or after every test, but only if the test requests the fixture **by name**. Both always require a name parameter.
+
+```ts
+describe('per-test setup', () => {
+  beforeEach('workspace', async () => {
+    await $`mkdir -p /tmp/test-workspace`;
+    return '/tmp/test-workspace';
+  });
+
+  afterEach('workspace', async (workspace) => {
+    await $`rm -rf ${workspace}`;
+  });
+
+  // 'workspace' fixture runs because it's requested
+  test('has workspace', async ({ $, workspace }) => {
+    const result = await $`ls ${workspace}`;
+    await expect(result).toSucceed();
+  });
+
+  // 'workspace' fixture does NOT run for this test
+  test('no workspace needed', async ({ $ }) => {
+    await $`echo hello`;
+  });
+});
+```
+
+## Named Fixtures (Lazy Hooks)
+
+Named fixtures are a powerful pattern for on-demand setup. A named `beforeEach` only executes if the test function includes that fixture name as a parameter. This avoids unnecessary setup for tests that do not need it.
+
+```ts
+import { test, describe, expect, beforeAll, beforeEach, afterEach, afterAll } from 'repterm';
+
+describe('fixtures', () => {
+  beforeAll(async () => ({ rootDir: '/tmp/repterm-suite' }));
+
+  // Named fixture: only runs if a test requests 'tmpDir'
+  beforeEach('tmpDir', async ({ rootDir }) => {
+    const tmpDir = `${rootDir}/${Date.now()}`;
+    await $`mkdir -p ${tmpDir}`;
+    return tmpDir;
+  });
+
+  // Cleanup for the named fixture
+  afterEach('tmpDir', async (tmpDir) => {
+    await $`rm -rf ${tmpDir}`;
+  });
+
+  afterAll(async ({ rootDir }) => {
+    await $`rm -rf ${rootDir}`;
+  });
+
+  // The 'tmpDir' fixture runs because the test requests it
+  test('uses fixture', async ({ $, tmpDir }) => {
+    await $`touch ${tmpDir}/a.txt`;
+    const result = await $`ls ${tmpDir}`;
+    await expect(result).toContainInOutput('a.txt');
+  });
+
+  // The 'tmpDir' fixture does NOT run for this test
+  test('skips fixture', async ({ $ }) => {
+    const result = await $`echo "no fixture needed"`;
+    await expect(result).toSucceed();
+  });
+});
+```
+
+## Key Concepts
+
+### Lazy Execution
+
+Named hooks are lazy. They only execute when a test function destructures the fixture by name. If a test does not request the fixture, the setup and teardown for that fixture are skipped entirely. This keeps tests fast and avoids unnecessary side effects.
+
+### Shared State from `beforeAll`
+
+The return value of `beforeAll` becomes shared context. It is merged into the context object available to `beforeEach` hooks and test functions. Use this for expensive, suite-level setup that should happen only once.
+
+### Fixture Cleanup
+
+When a named `afterEach` is defined, it only runs for tests where the corresponding named `beforeEach` actually executed. The fixture's return value is passed as an argument to the cleanup function.
+
+### When to Use Each Hook
+
+| Hook | Scope | Use for |
+| --- | --- | --- |
+| `beforeAll` | Once per suite | Database connections, shared directories, heavy initialization |
+| `afterAll` | Once per suite | Closing connections, removing shared resources |
+| Named `beforeEach` | Only when requested | Optional fixtures that not every test needs |
+| Named `afterEach` | Only when requested | Cleanup for the corresponding named fixture |

@@ -1,0 +1,74 @@
+---
+title: Kubectl Setup
+description: Install and configure the kubectl plugin for Repterm.
+---
+
+## Installation
+
+Install the plugin as a dev dependency:
+
+```bash
+bun add -d @nexusgpu/repterm-plugin-kubectl
+```
+
+Or use the Repterm plugin CLI:
+
+```bash
+repterm plugin install @nexusgpu/repterm-plugin-kubectl
+```
+
+## Prerequisites
+
+- **kubectl CLI** installed and available in your PATH
+- **KUBECONFIG** environment variable set, or `~/.kube/config` configured
+- A running Kubernetes cluster (for actual cluster tests)
+
+## Configuration
+
+Register the plugin with `defineConfig()`:
+
+```ts
+import { defineConfig, createTestWithPlugins } from 'repterm';
+import { kubectlPlugin } from '@nexusgpu/repterm-plugin-kubectl';
+
+const config = defineConfig({
+  plugins: [kubectlPlugin({ namespace: 'default' })] as const,
+});
+
+const test = createTestWithPlugins(config);
+```
+
+### Plugin Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `namespace` | `string` | `'default'` | Kubernetes namespace for all operations |
+
+## Accessing the Plugin
+
+In your tests, access the kubectl plugin via `ctx.plugins.kubectl`:
+
+```ts
+test('cluster info', async (ctx) => {
+  const k = ctx.plugins.kubectl;
+
+  const info = await k.clusterInfo();
+  console.log('Cluster reachable:', info.reachable);
+  console.log('Server version:', info.serverVersion);
+});
+```
+
+## Namespace Management
+
+Change the namespace at runtime:
+
+```ts
+test('multi-namespace', async (ctx) => {
+  const k = ctx.plugins.kubectl;
+
+  k.setNamespace('staging');
+  // All subsequent commands use 'staging' namespace
+
+  const ns = k.getNamespace(); // 'staging'
+});
+```

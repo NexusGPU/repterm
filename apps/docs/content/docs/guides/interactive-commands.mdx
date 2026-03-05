@@ -1,0 +1,92 @@
+---
+title: Interactive Commands
+description: How to test interactive CLI programs with Repterm
+---
+
+## Overview
+
+Repterm provides first-class support for testing interactive command-line programs -- tools that prompt for input, display dynamic output, or maintain a REPL session. You can drive these programs by sending input and asserting on their output as it appears.
+
+## Using `terminal.run`
+
+The `terminal` fixture gives you direct access to a PTY-based terminal. Use `terminal.run` with `interactive: true` to launch an interactive process.
+
+```ts
+test('interactive python', async ({ terminal }) => {
+  const proc = terminal.run('python3', { interactive: true, timeout: 30_000 });
+
+  await proc.expect('>>>');
+  await proc.send('print("hi")\n');
+  await proc.expect('hi');
+
+  await proc.send('exit()\n');
+  await proc.wait();
+});
+```
+
+## Using `$` Syntax
+
+You can also launch interactive processes using the `$` tagged template with options.
+
+```ts
+test('interactive with $', async ({ $ }) => {
+  const proc = $({ interactive: true, timeout: 30_000 })`python3`;
+
+  await proc.expect('>>>');
+  await proc.send('print("hi")\n');
+  await proc.expect('hi');
+
+  await proc.send('exit()\n');
+  await proc.wait();
+});
+```
+
+## PTYProcess Methods
+
+When running an interactive process, you get back a `PTYProcess` instance with the following methods:
+
+| Method | Description |
+| --- | --- |
+| `expect(text)` | Wait for the specified text to appear in the terminal output. Throws if the text does not appear before the timeout. |
+| `send(text)` | Send input to the process. A newline is appended automatically. |
+| `sendRaw(data)` | Send raw input to the process without appending a newline. Useful for sending control characters or partial input. |
+| `start()` | Start the process without waiting for any output. |
+| `interrupt()` | Send a `Ctrl+C` signal to the process. |
+| `wait()` | Wait for the process to exit. Returns a `CommandResult` with output, stderr, and exit code. |
+
+## Example: Testing a Node.js REPL
+
+```ts
+test('node repl', async ({ terminal }) => {
+  const proc = terminal.run('node', { interactive: true, timeout: 15_000 });
+
+  await proc.expect('>');
+  await proc.send('1 + 2\n');
+  await proc.expect('3');
+
+  await proc.send('.exit\n');
+  await proc.wait();
+});
+```
+
+## Example: Handling Ctrl+C
+
+```ts
+test('interrupt long-running command', async ({ terminal }) => {
+  const proc = terminal.run('sleep 60', { interactive: true, timeout: 10_000 });
+
+  // Let the process start
+  await proc.start();
+
+  // Interrupt it
+  await proc.interrupt();
+  await proc.wait();
+});
+```
+
+## Tips
+
+- **Always set a `timeout`** on interactive processes to prevent tests from hanging if the program does not produce expected output.
+- **Use `send` for line-based input** and `sendRaw` when you need precise control over what bytes are sent.
+- **Use `expect` to synchronize** before sending the next input. This ensures the program is ready to receive your input.
+- **Call `wait()` at the end** to ensure the process exits cleanly and to capture the final `CommandResult`.

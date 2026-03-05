@@ -1,0 +1,59 @@
+---
+title: Assertions
+description: Reference for all built-in assertion matchers.
+---
+
+## CommandResult Assertions
+
+Use `expect(result)` where `result` is a `CommandResult` from `$` or `terminal.run()`.
+
+```ts
+const result = await $`echo hello`;
+
+// Success/failure
+await expect(result).toSucceed();           // code === 0
+await expect(result).toFail();              // code !== 0
+await expect(result).toHaveExitCode(0);     // specific exit code
+
+// Output matching
+await expect(result).toContainInOutput('hello');     // check combined output
+await expect(result).toHaveStdout('hello');          // partial stdout match
+await expect(result).toHaveStderr('error');          // partial stderr match
+
+// Regex matching
+await expect(result).toMatchStdout(/ready/i);        // regex on stdout
+await expect(result).toMatchStderr(/error/i);        // regex on stderr
+```
+
+### Assertion Reference
+
+| Matcher | Description |
+| --- | --- |
+| `toSucceed()` | Assert exit code is 0 |
+| `toFail()` | Assert exit code is non-zero |
+| `toHaveExitCode(code)` | Assert specific exit code |
+| `toContainInOutput(text)` | Assert combined stdout+stderr contains text |
+| `toHaveStdout(text)` | Assert stdout contains text |
+| `toHaveStderr(text)` | Assert stderr contains text |
+| `toMatchStdout(regex)` | Assert stdout matches regex pattern |
+| `toMatchStderr(regex)` | Assert stderr matches regex pattern |
+
+## Terminal Assertions
+
+Use `expect(terminal)` to assert on the current terminal state:
+
+```ts
+await expect(terminal).toContainText('prompt');    // text in terminal
+await expect(terminal).toMatchPattern(/\$\s/);     // regex on terminal
+```
+
+| Matcher | Description |
+| --- | --- |
+| `toContainText(text)` | Assert terminal output contains text |
+| `toMatchPattern(regex)` | Assert terminal output matches regex pattern |
+
+## Tips
+
+- In **Spawn mode**, exit code assertions (`toSucceed`, `toFail`, `toHaveExitCode`) work reliably.
+- In **PTY/Recording mode**, exit code is often `-1`. Prefer output assertions (`toContainInOutput`, `toHaveStdout`).
+- Use `$({ silent: true })` to get reliable exit codes in any mode.

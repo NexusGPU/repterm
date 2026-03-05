@@ -1,0 +1,327 @@
+---
+title: Kubectl API Reference
+description: Complete method reference for the kubectl plugin.
+---
+
+## Run and Read
+
+### run(args)
+
+Execute a raw kubectl command and return the output string.
+
+```ts
+const output = await k.run('get pods -o wide');
+```
+
+### command(args)
+
+Build a kubectl command string without executing it.
+
+```ts
+const cmd = k.command('get pods');
+// Returns: "kubectl get pods -n default"
+```
+
+### get(resource, name?, options?)
+
+Get resources as parsed JSON.
+
+```ts
+// Get a specific resource
+const pod = await k.get('pod', 'nginx');
+
+// List resources
+const pods = await k.get('pods');
+
+// With options
+const filtered = await k.get('pods', undefined, {
+  selector: 'app=nginx',
+  fieldSelector: 'status.phase=Running',
+  allNamespaces: true,
+  output: 'wide',
+});
+```
+
+#### Get Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `selector` | `string` | Label selector |
+| `fieldSelector` | `string` | Field selector |
+| `allNamespaces` | `boolean` | Search across all namespaces |
+| `jqFilter` | `string` | JQ filter expression |
+| `watch` | `boolean` | Watch for changes (returns WatchProcess) |
+| `output` | `string` | Output format override |
+
+### getJsonPath(resource, name, jsonPath, options?)
+
+Get a specific field via JSONPath.
+
+```ts
+const phase = await k.getJsonPath('pod', 'nginx', '.status.phase');
+```
+
+### exists(resource, name)
+
+Check if a resource exists in the cluster.
+
+```ts
+const found = await k.exists('pod', 'nginx'); // boolean
+```
+
+### clusterInfo()
+
+Get cluster connectivity information.
+
+```ts
+const info = await k.clusterInfo();
+// { reachable, controlPlane?, coreDNS?, serverVersion?, error? }
+```
+
+## Resource Lifecycle
+
+### apply(yaml)
+
+Create or update resources from YAML.
+
+```ts
+const result = await k.apply(`
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+`);
+```
+
+### delete(resource, name, options?)
+
+Delete a resource. Treats "not found" as success.
+
+```ts
+await k.delete('pod', 'nginx');
+await k.delete('pod', 'nginx', { force: true });
+```
+
+### waitForPod(name, status?, timeout?)
+
+Wait for a pod to reach a specific status.
+
+```ts
+// Default: wait for "Running", timeout 60s
+await k.waitForPod('nginx');
+
+// Custom status and timeout
+await k.waitForPod('nginx', 'Succeeded', 120_000);
+```
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `status` | `'Running'` | Target status: `Running`, `Succeeded`, `Failed`, `Pending` |
+| `timeout` | `60000` | Timeout in milliseconds |
+
+### wait(resource, name, condition, options?)
+
+Wait for a generic condition.
+
+```ts
+await k.wait('deployment', 'app', 'Available', { timeout: 120_000 });
+await k.wait('pod', 'nginx', 'delete', { forDelete: true });
+```
+
+### waitForJsonPath(resource, name, jsonPath, value, timeout?)
+
+Wait for a specific field to reach a value.
+
+```ts
+await k.waitForJsonPath('pod', 'nginx', '.status.phase', 'Running', 60_000);
+```
+
+### waitForReplicas(resource, name, count, timeout?)
+
+Wait for a deployment/statefulset to reach a replica count.
+
+```ts
+await k.waitForReplicas('deployment', 'app', 3, 120_000);
+```
+
+### waitForService(name, timeout?)
+
+Wait for a service to have endpoints.
+
+```ts
+await k.waitForService('my-svc', 30_000);
+```
+
+## Operations
+
+### logs(pod, options?)
+
+Get pod logs.
+
+```ts
+const logs = await k.logs('nginx');
+const logs = await k.logs('nginx', {
+  container: 'sidecar',
+  tail: 100,
+  since: '5m',
+  previous: true,
+});
+```
+
+### exec(pod, command, options?)
+
+Execute a command inside a pod.
+
+```ts
+const result = await k.exec('nginx', 'cat /etc/hostname');
+const result = await k.exec('nginx', 'ls', { container: 'sidecar' });
+```
+
+### describe(resource, name?)
+
+Get resource description.
+
+```ts
+const desc = await k.describe('pod', 'nginx');
+```
+
+### scale(resource, name, replicas)
+
+Scale a deployment or statefulset.
+
+```ts
+await k.scale('deployment', 'app', 5);
+```
+
+### patch(resource, name, patch, type?)
+
+Patch a resource.
+
+```ts
+await k.patch('deployment', 'app', { spec: { replicas: 3 } });
+await k.patch('deployment', 'app', patch, 'merge'); // "strategic" | "merge" | "json"
+```
+
+### label(resource, name, labels)
+
+Add or update labels.
+
+```ts
+await k.label('pod', 'nginx', { env: 'staging', team: 'backend' });
+```
+
+### annotate(resource, name, annotations)
+
+Add or update annotations.
+
+```ts
+await k.annotate('pod', 'nginx', { 'description': 'test pod' });
+```
+
+### rollout
+
+Manage rollouts for deployments and statefulsets.
+
+```ts
+await k.rollout.status('deployment', 'app');
+await k.rollout.restart('deployment', 'app');
+await k.rollout.pause('deployment', 'app');
+await k.rollout.resume('deployment', 'app');
+await k.rollout.undo('deployment', 'app');        // Latest revision
+await k.rollout.undo('deployment', 'app', 2);     // Specific revision
+await k.rollout.history('deployment', 'app');
+```
+
+### portForward(resource, ports, options?)
+
+Forward ports from a resource.
+
+```ts
+const pf = await k.portForward('pod/nginx', '8080:80');
+console.log('Local port:', pf.localPort);
+
+// Stop forwarding when done
+pf.stop();
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `address` | `'127.0.0.1'` | Local address to bind |
+| `delay` | `2000` | Delay in ms after starting to ensure connection |
+
+### getEvents(options?)
+
+Get cluster events.
+
+```ts
+const events = await k.getEvents();
+const events = await k.getEvents({ fieldSelector: 'involvedObject.name=nginx' });
+```
+
+### getNodes(options?)
+
+Get cluster nodes.
+
+```ts
+const nodes = await k.getNodes();
+const nodes = await k.getNodes({ selector: 'node-role.kubernetes.io/worker' });
+```
+
+### cp(source, dest, options?)
+
+Copy files to/from pods.
+
+```ts
+await k.cp('/local/file.txt', 'nginx:/tmp/file.txt');
+await k.cp('nginx:/tmp/file.txt', '/local/file.txt');
+```
+
+## Namespace and Cluster
+
+### setNamespace(namespace)
+
+Change the namespace for subsequent commands.
+
+```ts
+k.setNamespace('kube-system');
+await k.get('pods'); // Now queries kube-system
+```
+
+### getNamespace()
+
+Get the current namespace.
+
+```ts
+const ns = k.getNamespace(); // e.g. "default"
+```
+
+### getKubeconfig()
+
+Get the current kubeconfig path, if set.
+
+```ts
+const kubeconfig = k.getKubeconfig(); // string | undefined
+```
+
+### setCluster(kubeConfigPath)
+
+Return a shell command to set the KUBECONFIG environment variable.
+
+```ts
+const exportCmd = k.setCluster('/path/to/kubeconfig');
+// Returns: "export KUBECONFIG='/path/to/kubeconfig'"
+```
+
+## Watch
+
+When using `get()` with `{ watch: true }`, a `WatchProcess` is returned instead of data. You **must** call `interrupt()` to stop the watch:
+
+```ts
+const watch = await k.get('pods', undefined, { watch: true, output: 'wide' });
+// ... observe changes ...
+await watch.interrupt();
+```

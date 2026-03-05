@@ -1,0 +1,101 @@
+---
+title: Plugin API Reference
+description: Complete API reference for plugin-related functions and types.
+---
+
+## definePlugin()
+
+Define a new plugin with a name and setup function.
+
+```ts
+import { definePlugin } from 'repterm';
+
+const myPlugin = definePlugin('name', (ctx) => ({
+  methods: { /* ... */ },
+  context: { /* ... */ },
+  hooks: { /* ... */ },
+}));
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Unique plugin identifier |
+| `setup` | `(ctx) => PluginDefinition` | Setup function receiving context, returning methods, context, and hooks |
+
+### Return Type: PluginDefinition
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `methods` | `object` | Custom methods accessible via `ctx.plugins.<name>` |
+| `context` | `object` | Properties injected into the test context |
+| `hooks` | `PluginHooks` | Optional lifecycle hooks |
+
+## defineConfig()
+
+Create a configuration object with plugins.
+
+```ts
+import { defineConfig } from 'repterm';
+
+const config = defineConfig({
+  plugins: [plugin1, plugin2] as const,
+});
+```
+
+The `as const` assertion ensures full type inference for plugin methods and context.
+
+## createTestWithPlugins()
+
+Create a `test` function with plugin injection.
+
+```ts
+import { createTestWithPlugins } from 'repterm';
+
+const test = createTestWithPlugins(config);
+
+test('name', async (ctx) => {
+  ctx.plugins.pluginName.method();
+  ctx.contextProperty;
+});
+```
+
+## describeWithPlugins()
+
+Create a `describe` block with plugin injection.
+
+```ts
+import { describeWithPlugins } from 'repterm';
+
+describeWithPlugins(config, 'suite name', () => {
+  // tests inside have access to plugins
+});
+```
+
+## PluginHooks
+
+| Hook | Signature | Description |
+| --- | --- | --- |
+| `beforeTest` | `(ctx) => Promise<void> \| void` | Runs before each test |
+| `afterTest` | `(ctx, error?) => Promise<void> \| void` | Runs after each test |
+| `beforeCommand` | `(command: string) => string \| Promise<string>` | Transform command before execution |
+| `afterOutput` | `(output: string) => string \| Promise<string>` | Transform output after capture |
+
+## repterm-api Package
+
+For third-party plugin development, `repterm-api` provides a minimal API surface:
+
+```bash
+bun add -d repterm-api
+```
+
+### Exported Types
+
+| Type | Description |
+| --- | --- |
+| `PluginContext` | Context passed to plugin setup functions |
+| `MinimalTerminal` | Minimal terminal interface (run, snapshot, isPtyMode) |
+| `MinimalTestContext` | Minimal test context with terminal |
+| `PluginHooks<TContext>` | Lifecycle hooks interface |
+| `MatcherResult` | Result type for custom matchers (`pass`, `message`, `actual`, `expected`) |

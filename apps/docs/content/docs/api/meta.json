@@ -1,0 +1,10 @@
+{
+  "title": "API Reference",
+  "pages": [
+    "test-dsl",
+    "terminal-api",
+    "assertions",
+    "hooks",
+    "command-options"
+  ]
+}

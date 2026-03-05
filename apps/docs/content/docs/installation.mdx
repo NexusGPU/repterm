@@ -1,0 +1,82 @@
+---
+title: Installation
+description: Install Repterm and its system dependencies for recording and PTY testing.
+---
+
+## Install Repterm
+
+Add Repterm as a dev dependency using your preferred package manager:
+
+```bash
+# Bun (recommended)
+bun add -d repterm
+
+# npm
+npm install --save-dev repterm
+
+# pnpm
+pnpm add -D repterm
+```
+
+## System Dependencies
+
+Repterm's recording mode captures terminal sessions using **asciinema** and **tmux**. These are only required if you plan to use `--record` mode.
+
+### macOS
+
+```bash
+brew install asciinema tmux
+```
+
+### Ubuntu / Debian
+
+```bash
+sudo apt-get install asciinema tmux
+```
+
+### Other Linux
+
+Use your distribution's package manager to install `asciinema` and `tmux`. Both are widely available in standard repositories.
+
+## Binary Install (Standalone CLI)
+
+If you prefer a standalone binary without adding Repterm to your project dependencies:
+
+```bash
+curl -fsSL https://cdn.tensor-fusion.ai/archive/repterm/install.sh | bash
+```
+
+You can customize the install location and version:
+
+```bash
+REPTERM_VERSION=0.1.1 REPTERM_INSTALL_DIR=~/.local/bin \
+  curl -fsSL https://cdn.tensor-fusion.ai/archive/repterm/install.sh | bash
+```
+
+This installs the `repterm` CLI globally and is useful for CI environments or quick evaluation.
+
+## System Requirements
+
+| Requirement | Minimum Version |
+| --- | --- |
+| Bun runtime | Latest stable |
+| Node.js | 18+ |
+| asciinema | Latest (recording only) |
+| tmux | Latest (recording only) |
+
+## Verify Installation
+
+After installing, confirm everything is working:
+
+```bash
+# Check that Repterm is available
+bunx repterm --help
+
+# Check recording dependencies (optional)
+asciinema --version
+tmux -V
+```
+
+## Next Steps
+
+Once installed, head to [Getting Started](/docs/getting-started) to write your first test.

@@ -1,0 +1,82 @@
+---
+title: Writing Tests
+description: Best practices for organizing and writing Repterm tests
+---
+
+## Test Structure
+
+Repterm uses a familiar `describe` / `test` structure. Import the test utilities from `repterm` and organize your tests into logical groups.
+
+```ts
+import { test, describe, expect } from 'repterm';
+
+describe('basic', () => {
+  test('success command', async ({ $ }) => {
+    const result = await $`echo "Hello"`;
+    await expect(result).toSucceed();
+    await expect(result).toContainInOutput('Hello');
+  });
+
+  test('failure command', async ({ $ }) => {
+    const result = await $`cat /definitely-not-exists`;
+    await expect(result).toFail();
+    await expect(result).toHaveStderr('No such file');
+  });
+});
+```
+
+## Running Commands with `$`
+
+The `$` tagged template literal is the primary way to run commands. It provides automatic shell escaping for interpolated values, protecting against injection issues.
+
+```ts
+test('escaped variables', async ({ $ }) => {
+  const filename = 'my file with spaces.txt';
+  const result = await $`ls ${filename}`;
+  // filename is properly escaped in the shell command
+});
+```
+
+## Multi-Step Tests
+
+Use `test.step` to break complex tests into named steps. Each step is reported individually, making failures easier to diagnose.
+
+```ts
+test('multi-step workflow', async ({ $ }) => {
+  await test.step('create file', async () => {
+    await $`echo "content" > /tmp/test-file.txt`;
+  });
+
+  await test.step('verify file', async () => {
+    const result = await $`cat /tmp/test-file.txt`;
+    await expect(result).toContainInOutput('content');
+  });
+
+  await test.step('cleanup', async () => {
+    await $`rm /tmp/test-file.txt`;
+  });
+});
+```
+
+## Recording-Ready Tests
+
+Mark tests with `{ record: true }` so they can produce terminal recordings when run with the `--record` flag.
+
+```ts
+test('demo', { record: true }, async ({ $ }) => {
+  await $`pwd`;
+});
+```
+
+See the [Recording Mode](/docs/guides/recording) guide for full details.
+
+## Tips and Best Practices
+
+- **Use `$` tagged templates for commands.** The automatic shell escaping prevents common pitfalls with special characters and spaces.
+- **Use `describe` to group related tests.** This keeps your test output organized and makes it easier to run subsets of tests.
+- **Use `test.step` for multi-step tests.** Named steps provide better error reporting and make complex test flows readable.
+- **Use `{ record: true }` to mark recordable tests.** Only tests with this flag will produce `.cast` files when running in recording mode.
+- **Use `silent: true` when you need reliable exit codes in PTY mode.** PTY mode may report exit code `-1` for some commands; `silent: true` avoids this.
+- **Prefer output assertions over exit code assertions in PTY mode.** Checking `toContainInOutput` or `toHaveStderr` is more reliable than checking exit codes under PTY.
+- **Test files should use `.ts` or `.js` extensions.** Repterm discovers test files by these extensions automatically.
+- **Use `setup.ts` or `setup.js` for shared setup.** A setup file placed in a directory is auto-loaded before that directory's tests run.

@@ -1,0 +1,126 @@
+---
+title: Debugging
+description: Tips and techniques for debugging failing Repterm tests
+---
+
+## Verbose Output
+
+Run tests with the `--verbose` flag to see detailed output, including full command results, terminal snapshots, and timing information.
+
+```bash
+repterm --verbose tests/
+```
+
+## Debugging Techniques
+
+### Inspect Terminal State
+
+Use `terminal.snapshot()` to capture and inspect the current state of the terminal at any point during a test. This is useful when `expect` or `waitForText` fails and you need to see what the terminal actually contains.
+
+```ts
+test('debug example', async ({ $, terminal }) => {
+  await $`some-command`;
+
+  // Print the current terminal content for debugging
+  const snapshot = terminal.snapshot();
+  console.log('Terminal state:', snapshot);
+});
+```
+
+### Use `silent: true` for Reliable Exit Codes
+
+In PTY and recording modes, `CommandResult.code` may be `-1` because the exit code is not always reliably captured through the PTY layer. If your test depends on exit codes, use `silent: true` to run the command outside the PTY.
+
+```ts
+test('check exit code', async ({ $ }) => {
+  const result = await $({ silent: true })`grep "pattern" /some/file`;
+
+  // Exit code is reliable with silent: true
+  await expect(result).toFail();
+});
+```
+
+### Handle ANSI Escape Codes
+
+Terminal output often includes ANSI escape codes for colors and formatting. These invisible characters can cause text matching to fail. Use `terminal.snapshot()` to inspect the raw terminal state, or use `waitForText` with `stripAnsi` option for terminal-level text matching.
+
+```ts
+test('ansi handling', async ({ terminal }) => {
+  const proc = terminal.run('ls --color=always', { interactive: true });
+
+  // proc.expect() matches text in terminal output
+  await proc.expect('filename');
+
+  // Use snapshot to inspect raw terminal state for debugging
+  const snapshot = terminal.snapshot();
+  console.log('Raw terminal:', snapshot);
+});
+```
+
+### Adjust Timeouts
+
+If `waitForText` or `expect` times out, the text may simply not have appeared yet. Increase the timeout to give slow commands more time.
+
+```ts
+test('slow command', async ({ terminal }) => {
+  const proc = terminal.run('slow-build-tool', {
+    interactive: true,
+    timeout: 60_000, // 60 seconds
+  });
+
+  await proc.expect('Build complete');
+});
+```
+
+## Quick Symptom Lookup
+
+| Symptom | Likely Cause | Action |
+| --- | --- | --- |
+| `--record` fails to start | Missing `asciinema` or `tmux` | Install dependencies: `brew install asciinema tmux` (macOS) or `apt-get install asciinema tmux` (Ubuntu) |
+| `code === -1` | Running under PTY or recording mode | Assert on output content instead of exit code, or use `silent: true` |
+| `waitForText` timeout | Text not present in output, or hidden by ANSI escape codes | Increase the timeout, use `terminal.snapshot()` to inspect state, or try `stripAnsi: false` |
+| 0 tests found | Wrong file path or empty filter | Verify the test file path and check that `{ record: true }` is set if using `--record` |
+
+## Common Patterns
+
+### Debugging a Flaky Test
+
+```ts
+test('flaky test', async ({ $, terminal }) => {
+  const result = await $`flaky-command`;
+
+  // Log output for debugging
+  console.log('stdout:', result.stdout);
+  console.log('stderr:', result.stderr);
+  console.log('exit code:', result.code);
+
+  // Snapshot the terminal to see full context
+  const snapshot = terminal.snapshot();
+  console.log('terminal:', snapshot);
+
+  await expect(result).toSucceed();
+});
+```
+
+### Isolating Failures in Multi-Step Tests
+
+Use `test.step` to narrow down which part of a multi-step test is failing:
+
+```ts
+test('multi-step', async ({ $ }) => {
+  await test.step('setup', async () => {
+    const result = await $`mkdir -p /tmp/debug-test`;
+    await expect(result).toSucceed();
+  });
+
+  await test.step('action', async () => {
+    const result = await $`some-command /tmp/debug-test`;
+    await expect(result).toSucceed();
+  });
+
+  await test.step('verify', async () => {
+    const result = await $`ls /tmp/debug-test`;
+    await expect(result).toContainInOutput('expected-file');
+  });
+});
+```

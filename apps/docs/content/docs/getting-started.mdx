@@ -1,0 +1,117 @@
+---
+title: Getting Started
+description: Write and run your first Repterm test in under 5 minutes.
+---
+
+This guide walks you through writing your first Repterm test, running it, and understanding the basics of the framework. You should be able to complete it in under 5 minutes.
+
+## Prerequisites
+
+Make sure you have [installed Repterm](/docs/installation) before continuing.
+
+## Create Your First Test
+
+Create a file named `my-test.ts` in your project:
+
+```ts
+import { test, describe, expect } from 'repterm';
+
+describe('my first suite', () => {
+  test('success command', async ({ $ }) => {
+    const result = await $`echo "Hello"`;
+    await expect(result).toSucceed();
+    await expect(result).toContainInOutput('Hello');
+  });
+
+  test('failure command', async ({ $ }) => {
+    const result = await $`cat /definitely-not-exists`;
+    await expect(result).toFail();
+    await expect(result).toHaveStderr('No such file');
+  });
+});
+```
+
+### What is happening here?
+
+1. **`describe`** groups related tests into a suite.
+2. **`test`** defines an individual test case. The callback receives a context object with the `$` tagged template for running commands.
+3. **`$\`echo "Hello"\``** executes the command in a terminal and returns a `CommandResult`.
+4. **`expect(result).toSucceed()`** asserts that the command exited with code 0.
+5. **`expect(result).toContainInOutput('Hello')`** asserts that the combined output contains the given text.
+6. **`expect(result).toFail()`** asserts a non-zero exit code.
+7. **`expect(result).toHaveStderr('No such file')`** asserts that stderr contains the given text.
+
+## Run the Test
+
+```bash
+bun run repterm my-test.ts
+```
+
+You should see output similar to:
+
+```
+my first suite
+  ✓ success command (12ms)
+  ✓ failure command (8ms)
+
+Tests:  2 passed, 0 failed
+Time:   0.15s
+```
+
+## CLI Flags
+
+Repterm supports several flags to control test execution:
+
+| Flag | Short | Default | Description |
+| --- | --- | --- | --- |
+| `--record` | `-r` | `false` | Run only `{ record: true }` tests with full recording |
+| `--workers` | `-w` | `1` | Number of parallel workers |
+| `--timeout` | `-t` | `300000` | Test timeout in milliseconds |
+| `--verbose` | `-v` | `false` | Show stack traces and detailed output |
+| `--prompt-lines` | `-p` | auto-detect | Override prompt line count (0 = auto) |
+
+### Examples
+
+```bash
+# Run with recording enabled
+bun run repterm --record my-test.ts
+
+# Run with 4 parallel workers
+bun run repterm --workers 4 my-test.ts
+
+# Run with a 10-second timeout and verbose output
+bun run repterm --timeout 10000 --verbose my-test.ts
+```
+
+## Adding More Tests
+
+Here is a slightly more advanced example using steps and interactive commands:
+
+```ts
+import { test, expect } from 'repterm';
+
+test('multi-step workflow', async ({ $ }) => {
+  await test.step('create temp directory', async () => {
+    const result = await $`mkdir -p /tmp/repterm-demo`;
+    await expect(result).toSucceed();
+  });
+
+  await test.step('write a file', async () => {
+    const result = await $`echo "test content" > /tmp/repterm-demo/file.txt`;
+    await expect(result).toSucceed();
+  });
+
+  await test.step('verify file contents', async () => {
+    const result = await $`cat /tmp/repterm-demo/file.txt`;
+    await expect(result).toSucceed();
+    await expect(result).toHaveStdout('test content');
+  });
+});
+```
+
+## Next Steps
+
+- [Architecture](/docs/concepts/architecture) -- Learn how Repterm's layers work together
+- [Terminal Modes](/docs/concepts/terminal-modes) -- Understand spawn, PTY, recording, and interactive modes
+- [Test DSL Reference](/docs/api/test-dsl) -- Complete API for `test()`, `describe()`, and `test.step()`
+- [Assertions](/docs/api/assertions) -- Full list of available assertions

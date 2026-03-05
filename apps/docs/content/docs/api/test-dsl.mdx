@@ -1,0 +1,100 @@
+---
+title: Test DSL
+description: Complete reference for test(), describe(), and test.step() functions.
+---
+
+## test()
+
+Register a test case. The test function receives a context object with `$` (tagged template for commands) and `terminal` (terminal API).
+
+```ts
+import { test, expect } from 'repterm';
+
+// test(name, fn)
+test('basic', async ({ $ }) => {
+  const result = await $`echo hello`;
+  await expect(result).toSucceed();
+});
+
+// test(name, options, fn)
+test('with options', { record: true, timeout: 30_000 }, async ({ $ }) => {
+  await $`pwd`;
+});
+```
+
+### Test Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `record` | `boolean` | Mark this test for recording mode |
+| `timeout` | `number` | Test timeout in milliseconds |
+
+### Test Context
+
+The test function receives a context object:
+
+```ts
+test('example', async ({ $, terminal }) => {
+  // $ — tagged template for running commands
+  const result = await $`echo hello`;
+
+  // terminal — Terminal API for advanced control
+  await terminal.waitForText('hello');
+});
+```
+
+## describe()
+
+Group related tests into a suite. Suites can be nested.
+
+```ts
+import { test, describe, expect } from 'repterm';
+
+// describe(name, fn)
+describe('suite', () => {
+  test('case 1', async ({ $ }) => {
+    await $`echo suite`;
+  });
+});
+
+// describe(name, options, fn)
+describe('record suite', { record: true }, () => {
+  test('case 2', async ({ terminal }) => {
+    await terminal.waitForText('ready', { timeout: 5000 });
+  });
+});
+```
+
+### Describe Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `record` | `boolean` | Mark all tests in this suite for recording mode |
+
+When a suite has `{ record: true }`, all tests within it inherit the record flag unless individually overridden.
+
+## test.step()
+
+Break a test into named steps. Steps appear in the test output and can have recording-specific options.
+
+```ts
+test('step demo', async ({ $ }) => {
+  await test.step('prepare', async () => {
+    await $`mkdir -p /tmp/repterm-demo`;
+  });
+
+  await test.step('verify', { showStepTitle: true, pauseAfter: 1000 }, async () => {
+    const result = await $`ls /tmp/repterm-demo`;
+    await expect(result).toSucceed();
+  });
+});
+```
+
+### Step Recording Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `typingSpeed` | `number` | Typing speed override for this step (ms/char) |
+| `pauseAfter` | `number` | Pause after step completes (ms) |
+| `pauseBefore` | `number` | Pause before step starts (ms) |
+| `showStepTitle` | `boolean` | Show step title in recording |
