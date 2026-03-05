@@ -21,12 +21,6 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-          registry-url: 'https://registry.npmjs.org'
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -39,7 +33,10 @@ jobs:
       - name: Build all packages
         run: bun run build
 
+      - name: Configure npm auth
+        run: echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' > ~/.npmrc
+
       - name: Publish all packages
         run: bun run publish:all
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
