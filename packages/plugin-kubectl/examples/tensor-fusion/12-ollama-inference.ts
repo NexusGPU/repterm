@@ -72,7 +72,7 @@ spec:
 }
 
 describe('Test Scenario 12: Ollama LLM Inference', { record: true }, () => {
-  test('Run LLM inference via Ollama with remote GPU', async (ctx) => {
+  test('Run LLM inference via Ollama with remote GPU', { timeout: TIMEOUTS.INFERENCE }, async (ctx) => {
     const { kubectl } = ctx.plugins;
 
     await deleteResourceAndWait(kubectl, 'pod', POD_NAME);
@@ -134,6 +134,7 @@ describe('Test Scenario 12: Ollama LLM Inference', { record: true }, () => {
         async () => {
           await kubectl.exec(POD_NAME, ['sh', '-c', `ollama pull ${OLLAMA_MODEL}`], {
             container: 'ollama',
+            timeout: TIMEOUTS.INFERENCE,
           });
         }
       );
@@ -146,13 +147,18 @@ describe('Test Scenario 12: Ollama LLM Inference', { record: true }, () => {
           pauseAfter: 3000,
         },
         async () => {
+          // Use environment variables to set temperature=0 for deterministic output.
+          // Without this, small models produce unpredictable responses (e.g. "." instead of "2").
           const output = await kubectl.exec(
             POD_NAME,
-            ['sh', '-c', `ollama run ${OLLAMA_MODEL} "What is 1+1? Answer in one word."`],
-            { container: 'ollama' }
+            [
+              'sh',
+              '-c',
+              `OLLAMA_NUM_PREDICT=10 ollama run ${OLLAMA_MODEL} --nowordwrap "1+1="`,
+            ],
+            { container: 'ollama', timeout: TIMEOUTS.INFERENCE }
           );
-          // Verify inference produced output
-          expect(output.trim().length).toBeGreaterThan(0);
+          expect(output).toContain('2');
         }
       );
 
