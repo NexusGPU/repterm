@@ -246,8 +246,15 @@ jobs:
       - name: Build plugin package
         run: bun run build:plugin-kubectl
 
+      - name: Resolve workspace protocol for npm compatibility
+        run: |
+          API_VERSION=$(jq -r .version packages/plugin-api/package.json)
+          sed -i "s/\"workspace:\*\"/\"^${API_VERSION}\"/g" packages/plugin-kubectl/package.json
+
       - name: Publish plugin package
-        run: bun run publish:plugin-kubectl
+        run: cd packages/plugin-kubectl && npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-repterm-api:
     name: Release repterm-api
@@ -275,4 +282,6 @@ jobs:
         run: bun run build:plugin-api
 
       - name: Publish repterm-api package
-        run: bun run publish:plugin-api
+        run: cd packages/plugin-api && npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
