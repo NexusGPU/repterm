@@ -10,6 +10,7 @@
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
+    "fumadocs-core": "^15.2.10",
     "fumadocs-mdx": "^13.0.8",
     "fumadocs-ui": "15.8.5",
     "next": "^15.3.0",
