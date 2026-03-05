@@ -122,6 +122,11 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   private lastExitCode: number = -1;
   // Baseline command_finished event count before current command (for OSC 133)
   private osc133BaselineCount: number = 0;
+  // Foreground process name when the shell is idle (e.g. "zsh", "bash").
+  // Detected lazily on first command. Used by waitForOutputStable to validate
+  // prompt detection: if pane_current_command != shellCommandName, the prompt-like
+  // line is a false positive from command output (e.g. % in tqdm progress bars).
+  private shellCommandName?: string;
 
   constructor(config: TerminalConfig = {}) {
     super();
@@ -729,6 +734,44 @@ export class Terminal extends EventEmitter implements TerminalAPI {
   }
 
   /**
+   * Query tmux for the current foreground command name in this pane.
+   * Returns the process name (e.g. "zsh", "kubectl", "python3").
+   */
+  private async getPaneCurrentCommand(): Promise<string> {
+    if (!this.tmuxSessionName || this.paneIndex === undefined) return '';
+    try {
+      const proc = Bun.spawn(
+        [
+          'tmux',
+          'display-message',
+          '-p',
+          '-t',
+          `${this.tmuxSessionName}:0.${this.paneIndex}`,
+          '#{pane_current_command}',
+        ],
+        { stdout: 'pipe', stderr: 'pipe' }
+      );
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      return stdout.trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Check if the shell is the foreground process in this pane (i.e., no command running).
+   * Used to validate prompt detection and prevent false positives from command output
+   * that contains prompt-like characters (e.g. % in tqdm progress bars, > in LLM output).
+   */
+  private async isShellInForeground(): Promise<boolean> {
+    if (!this.shellCommandName) return true; // Not yet detected, assume prompt is real
+    const current = await this.getPaneCurrentCommand();
+    if (!current) return true; // Query failed, don't block
+    return current === this.shellCommandName;
+  }
+
+  /**
    * Strip ANSI escape sequences from text
    */
   private stripAnsi(text: string): string {
@@ -1290,6 +1333,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
             const stripped = this.stripAnsi(output);
             const lastLine = stripped.trim().split('\n').pop() || '';
             if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
+              // Validate via pane foreground process: if the shell is not in
+              // the foreground, a command is still running and this prompt-like
+              // line is a false positive (e.g. % in tqdm, > in LLM output).
+              if (!(await this.isShellInForeground())) {
+                continue;
+              }
               // Prompt detected — give D marker a brief grace period
               if (!resolved) {
                 await this.sleep(200);
@@ -1336,7 +1385,12 @@ export class Terminal extends EventEmitter implements TerminalAPI {
         const stripped = this.stripAnsi(output);
         const lastLine = stripped.trim().split('\n').pop() || '';
         if (promptPattern.test(lastLine) && this.isBarePromptLine(lastLine)) {
-          break;
+          // Validate via pane foreground process: if the shell is not in
+          // the foreground, a command is still running and this prompt-like
+          // line is a false positive (e.g. % in tqdm, > in LLM output).
+          if (await this.isShellInForeground()) {
+            break;
+          }
         }
       }
     } else {
@@ -1554,6 +1608,15 @@ export class Terminal extends EventEmitter implements TerminalAPI {
     // Initialize session on first command
     if (!this.session.isActive()) {
       await this.initializeSession();
+    }
+
+    // Lazily detect the shell's process name (e.g. "zsh", "bash") before the
+    // first command runs. At this point the prompt is visible and the foreground
+    // process in the pane IS the shell. This name is used later by
+    // isShellInForeground() to distinguish a real prompt from a false positive.
+    if (this.recording && !this.shellCommandName) {
+      const name = await this.getPaneCurrentCommand();
+      if (name) this.shellCommandName = name;
     }
 
     // Pause before command
