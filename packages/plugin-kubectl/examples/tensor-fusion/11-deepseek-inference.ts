@@ -82,9 +82,9 @@ print("Loading model...")
 model = AutoModelForCausalLM.from_pretrained(local_path, trust_remote_code=True, device_map="cuda", local_files_only=True)
 print(f"Model loaded on {next(model.parameters()).device}")
 
-prompt = "What is 1+1? Answer briefly."
+prompt = "What is 1+1? Reply with just the number."
 inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-outputs = model.generate(**inputs, max_new_tokens=50)
+outputs = model.generate(**inputs, max_new_tokens=512)
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 print(f"INFERENCE_RESULT: {response}")
 `.trim();

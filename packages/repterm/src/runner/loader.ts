@@ -321,7 +321,7 @@ export async function loadTestsWithSetup(
   }
 
   const { registry } = await import('../api/test.js');
-  return registry.getSuites();
+  return registry.getRootSuites();
 }
 
 /**
