@@ -7,16 +7,33 @@
 
 import type { TestContext } from '../runner/models.js';
 import type { DollarFunction } from '../terminal/dollar.js';
-import {
-  definePlugin as definePluginFromApi,
-  type BasePluginContext as BasePluginContextGeneric,
-  type PluginHooks,
-  type PluginDefinition,
-  type AnyPlugin,
+import type {
+  BasePluginContext as BasePluginContextGeneric,
+  PluginHooks,
+  PluginDefinition,
+  AnyPlugin,
 } from 'repterm-api';
 
-// Re-export plugin-api for consumers (repterm re-exports these from index)
-export { definePluginFromApi as definePlugin };
+// Inline definePlugin to avoid runtime dependency on repterm-api.
+// This prevents "Cannot find package 'repterm-api'" errors when repterm
+// is installed via symlink/link outside its monorepo.
+function definePlugin<
+  TName extends string,
+  TContextIn extends object,
+  TContextOut extends object,
+  TMethods extends object,
+>(
+  name: TName,
+  setup: (ctx: TContextIn) => {
+    methods: TMethods;
+    context?: TContextOut;
+    hooks?: PluginHooks<any>;
+  },
+): PluginDefinition<TName, TContextIn, TContextOut, TMethods> {
+  return { name, setup };
+}
+
+export { definePlugin };
 export type { PluginDefinition, AnyPlugin, PluginHooks };
 export type BasePluginContext = BasePluginContextGeneric<TestContext>;
 
