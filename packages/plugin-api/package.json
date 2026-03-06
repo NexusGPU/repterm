@@ -1,6 +1,6 @@
 {
   "name": "repterm-api",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Plugin and matcher API for repterm - use this to build repterm plugins without depending on repterm",
   "type": "module",
   "main": "./dist/index.js",
