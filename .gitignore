@@ -38,3 +38,7 @@ coverage/
 packages/repterm/release
 
 *.tgz
+
+# Docs deployment artifacts
+apps/docs/.open-next/
+apps/docs/.vercel/
