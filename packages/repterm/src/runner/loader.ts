@@ -88,6 +88,9 @@ export async function discoverTests(
   return testFiles;
 }
 
+/** Directories that should never be traversed when discovering tests. */
+const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', '.turbo']);
+
 /**
  * Recursively find test files matching pattern
  */
@@ -106,6 +109,7 @@ async function findTestFiles(
       const stats = await stat(fullPath);
 
       if (stats.isDirectory() && recursive) {
+        if (IGNORED_DIRS.has(entry)) continue;
         const nestedFiles = await findTestFiles(fullPath, pattern, recursive);
         files.push(...nestedFiles);
       } else if (stats.isFile() && pattern.test(entry)) {
@@ -197,7 +201,9 @@ async function analyzeDirectory(
     const stats = await stat(fullPath);
 
     if (stats.isDirectory()) {
-      subdirs.push(fullPath);
+      if (!IGNORED_DIRS.has(entry)) {
+        subdirs.push(fullPath);
+      }
     } else if (stats.isFile() && pattern.test(entry)) {
       if (isSetupFile(entry)) {
         setupFile = fullPath;
