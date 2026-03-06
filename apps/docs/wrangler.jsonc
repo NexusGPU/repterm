@@ -1,7 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "repterm-docs",
-  "account_id": "6d7b0ffbd980de250cbff2e25503230d",
   "main": ".open-next/worker.js",
   "assets": {
     "binding": "ASSETS",
@@ -11,5 +10,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true
-  }
+  },
+  "routes": [
+    { "pattern": "repterm.ai", "custom_domain": true }
+  ]
 }
